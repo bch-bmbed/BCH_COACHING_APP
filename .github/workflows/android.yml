@@ -37,7 +37,7 @@ jobs:
         run: |
           cp android/app/build/outputs/apk/release/app-release.apk equilibre-connect.apk
           sha256sum equilibre-connect.apk > equilibre-connect.apk.sha256
-          gh release create "android-${{ github.run_number }}" equilibre-connect.apk equilibre-connect.apk.sha256 --title "Équilibre Connect 1.0.${{ github.run_number }}" --notes "Étapes avec coches et états réels, dernière réussite datée, progression de synchronisation et protection contre les clics répétés. Toutes les sources Santé Connect : séances, calories et pas. Installer par-dessus la version existante pour conserver l’association."
+          gh release create "android-${{ github.run_number }}" equilibre-connect.apk equilibre-connect.apk.sha256 --title "Équilibre Connect 1.0.${{ github.run_number }}" --notes "Lecture des vitesses et distances par séance, avec indication de la source et moyenne calculée si la distance est complète. Installer par-dessus la version existante, autoriser Distance et Vitesse, puis synchroniser. Association conservée."
       - name: Remove signing key from runner
         if: always()
         run: rm -f android/release.jks

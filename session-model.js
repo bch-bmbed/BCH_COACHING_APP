@@ -7,7 +7,10 @@
     if(!raw||!text(raw.id,200)||!text(raw.source,200)||!stamp(raw.start)||!stamp(raw.end)||!stamp(raw.modifiedAt)||!Number.isInteger(raw.type)||raw.type<0||raw.type>10000||!Object.hasOwn(labels,raw.kind)||typeof raw.title!=='string'||raw.title.length>160||!(raw.clientId===null||text(raw.clientId,200))||!(raw.activeKcal===null||(Number.isFinite(raw.activeKcal)&&raw.activeKcal>=0&&raw.activeKcal<=30000)))throw Error('Séance importée invalide.');
     if(Date.parse(raw.end)<=Date.parse(raw.start)||Date.parse(raw.end)-Date.parse(raw.start)>7*86400000)throw Error('Durée de séance invalide.');
     if(raw.totalKcal!==undefined&&raw.totalKcal!==null&&(!Number.isFinite(raw.totalKcal)||raw.totalKcal<0||raw.totalKcal>30000))throw Error('Calories totales de séance invalides.');
-    return {...Object.fromEntries(['id','clientId','source','start','end','modifiedAt','type','kind','title','activeKcal'].map(k=>[k,raw[k]])),totalKcal:raw.totalKcal??null};
+    for(const [field,max] of [['distanceMeters',1000000],['speedKmh',1000]])if(raw[field]!==undefined&&raw[field]!==null&&(!Number.isFinite(raw[field])||raw[field]<0||raw[field]>max))throw Error('Distance ou vitesse de séance invalide.');
+    if(raw.speedSamples!==undefined&&(!Number.isInteger(raw.speedSamples)||raw.speedSamples<0||raw.speedSamples>1000000))throw Error('Nombre de mesures de vitesse invalide.');
+    if((raw.speedKmh!=null)!==((raw.speedSamples??0)>0))throw Error('Mesures de vitesse incohérentes.');
+    return {...Object.fromEntries(['id','clientId','source','start','end','modifiedAt','type','kind','title','activeKcal'].map(k=>[k,raw[k]])),totalKcal:raw.totalKcal??null,distanceMeters:raw.distanceMeters??null,speedKmh:raw.speedKmh??null,speedSamples:raw.speedSamples??0};
   }
   const key=s=>s.source+'|'+(s.clientId||s.id);
   function sameWindow(a,b){
@@ -30,6 +33,12 @@
     });
   }
   const isUnclassifiedSource=source=>source==='com.urevo.app';
+  function motion(session){
+    const members=(session.members||[session]).filter(s=>s.speedKmh!=null||s.distanceMeters!=null).sort((a,b)=>Number(isUnclassifiedSource(b.source))-Number(isUnclassifiedSource(a.source))||Number(b.speedKmh!=null)-Number(a.speedKmh!=null)||key(a).localeCompare(key(b)));
+    const selected=members[0];if(!selected)return null;
+    const hours=(Date.parse(selected.end)-Date.parse(selected.start))/3600000;
+    return {source:selected.source,distanceMeters:selected.distanceMeters??null,speedKmh:selected.speedKmh??selected.distanceMeters/1000/hours,basis:selected.speedKmh!=null?'samples':'distance',samples:selected.speedSamples??0,minutes:hours*60};
+  }
   function energy(session,resting){
     const members=session.members||[session],direct=members.find(s=>s.activeKcal!==null&&s.activeKcal!==undefined);
     if(direct)return {kcal:direct.activeKcal,estimated:false,basis:'active',start:direct.start,end:direct.end};
@@ -56,5 +65,5 @@
     const grossLow=3*weight*minutes/60,grossHigh=3.5*weight*minutes/60,restKcal=resting*minutes/1440;
     return {minutes,weight,resting,speed:4,incline:0,grossLow,grossHigh,restKcal,activeLow:Math.max(0,grossLow-restKcal),activeHigh:Math.max(0,grossHigh-restKcal)};
   }
-  const api={validate,dedupe,labels,energy,energySummary,isUnclassifiedSource,walkingReference};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreSessions=api;
+  const api={validate,dedupe,labels,energy,energySummary,isUnclassifiedSource,walkingReference,motion};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreSessions=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

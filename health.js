@@ -5,6 +5,7 @@
   const sourceLabel=s=>s==='health-connect'?'Toutes les sources · Santé Connect':s==='com.urevo.app'?'Urevo':s==='com.google.android.apps.fitness'?'Google Fit':s==='com.garmin.android.apps.connectmobile'?'Garmin Connect':s;
   const fmt=n=>n===null?'—':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(n);
   const fmtEnergy=n=>n===null?'—':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:1}).format(n);
+  const fmtKm=n=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3}).format(n/1000);
   const time=s=>s?new Date(s).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
   function refresh(){combined=H.automatic(snapshots);paintAccount();window.Journal?.refreshHealth();}
   function paintAccount(){
@@ -51,17 +52,25 @@
     $('imported-status').textContent=lastError||(!user?'Connecte-toi pour retrouver tes séances importées.':!snapshot?'Aucun envoi reçu pour cette date.':snapshot.version<2?'La première version ne transmettait pas les séances. Mets à jour Équilibre Connect et autorise les séances, puis synchronise.':!snapshot.permissions.sessions?'Lecture des séances non autorisée. Les imports précédents restent conservés. Dans Équilibre Connect, actualise les autorisations.':!sessions.length?'Aucune séance écrite dans Santé Connect pour cette date lors du dernier envoi. Vérifie Données → Activité → Exercice dans Santé Connect, puis synchronise à nouveau.':`Transfert du ${time(snapshot.capturedAt)} · horaires affichés dans le fuseau ${snapshot.zone}.`);
     const clock=iso=>new Date(iso).toLocaleTimeString('fr-FR',{timeZone:snapshot?.zone,hour:'2-digit',minute:'2-digit'});
     for(const s of sessions){
-      const card=node('article');card.className='imported-session';const energy=S.energy(s,resting),minutes=(Date.parse(s.end)-Date.parse(s.start))/60000;
+      const card=node('article');card.className='imported-session';const energy=S.energy(s,resting),motion=S.motion(s),minutes=(Date.parse(s.end)-Date.parse(s.start))/60000;
       const calories=energy.kcal===null?'calories non disponibles':energy.basis==='source'?fmtEnergy(energy.kcal)+' kcal transmises par Urevo':(energy.estimated?'≈ ':'')+fmtEnergy(energy.kcal)+' kcal actives'+(energy.estimated?' estimées':' sur ce créneau');
       card.append(node('h3',s.title),node('p',`${clock(s.start)}–${clock(s.end)} · ${fmtEnergy(minutes)} min · ${calories}`),node('small',s.sources.map(sourceLabel).join(' + ')+(s.copies?` · ${s.copies} copie(s) regroupée(s)`:'')));
       if(energy.basis==='source')card.append(node('p','Nature à confirmer : valeur Urevo conservée sans soustraire le repos.'));
+      if(motion){
+        const distance=motion.distanceMeters===null?'':`${fmtKm(motion.distanceMeters)} km · `;
+        card.append(node('p',`${distance}${fmtEnergy(motion.speedKmh)} km/h · ${motion.basis==='samples'?'moyenne des mesures reçues':'vitesse moyenne calculée'} · ${sourceLabel(motion.source)}`));
+        card.append(node('small',motion.basis==='samples'?`${motion.samples} mesure(s) de vitesse ; moyenne des points disponibles, pas nécessairement de toute la séance.`:`Distance ÷ durée : ${fmtKm(motion.distanceMeters)} km ÷ (${fmtEnergy(motion.minutes)} min / 60). Moyenne sur la durée totale, pauses comprises.`));
+      } else if(['walking','running','cycling','hiking'].includes(s.kind)){
+        const p=snapshot.permissions;
+        card.append(node('p',p.distance===undefined||p.speed===undefined?'Vitesse et distance non demandées par cet ancien transfert. Mets à jour Équilibre Connect, autorise Distance et Vitesse, puis synchronise.':!p.distance||!p.speed?'Vitesse ou distance non autorisée : complète les autorisations dans Équilibre Connect, puis synchronise.':'Aucune mesure de vitesse ni distance complète reçue pour cette séance.'));
+      }
       if(s.kind==='walking'&&s.sources.some(S.isUnclassifiedSource)){
         const reference=node('div');reference.className='walking-reference';
         reference.append(node('strong','Repère théorique de calories actives'));
         const r=S.walkingReference(minutes,knownWeight?.weight,resting);
         if(r){
           reference.append(node('p',`≈ ${fmt(r.activeLow)}–${fmt(r.activeHigh)} kcal pour ${fmtEnergy(minutes)} min, si la marche est à 4 km/h, à plat.`));
-          reference.append(node('small',`Poids : ${fmtEnergy(r.weight)} kg (pesée du ${knownWeight.date.split('-').reverse().join('/')}). Allure et pente supposées, non reçues de la séance.`));
+          reference.append(node('small',`Poids : ${fmtEnergy(r.weight)} kg (pesée du ${knownWeight.date.split('-').reverse().join('/')}). ${motion?'La vitesse est affichée ci-dessus ; ce repère reste le scénario à 4 km/h, à plat.':'Allure supposée à 4 km/h.'} La pente n’est pas transmise.`));
           const calculation=node('details');calculation.append(node('summary','Comprendre le calcul'));
           calculation.append(node('p',`Dépense totale théorique : (3 à 3,5) × ${fmtEnergy(r.weight)} kg × (${fmtEnergy(minutes)} min / 60) ≈ ${fmt(r.grossLow)}–${fmt(r.grossHigh)} kcal.`));
           calculation.append(node('p',`Repos estimé : ${fmt(resting)} kcal/j × ${fmtEnergy(minutes)} / 1 440 ≈ ${fmt(r.restKcal)} kcal. Repère actif = total théorique − repos.`));
@@ -76,7 +85,7 @@
         card.append(node('p',hasTotal?'Le total de séance est disponible. Renseigne ton métabolisme de base dans Compte pour estimer la part active.':snapshot.bridgeVersion>=6?'Aucune calorie de séance exploitable reçue. Vérifie les calories partagées par la source dans Santé Connect.':'Cet envoi ne confirme pas la version installée. Mets à jour Équilibre Connect puis lance Synchroniser maintenant pour récupérer les calories de séance.'));
       }
       const detail=node('details');detail.append(node('summary','Voir les enregistrements source'));
-      for(const m of s.members)detail.append(node('p',`${sourceLabel(m.source)} · ${m.title||S.labels[m.kind]} · ${clock(m.start)}–${clock(m.end)} · ${fmtEnergy(m.activeKcal)} kcal actives${m.totalKcal!==null&&m.totalKcal!==undefined?' · '+fmtEnergy(m.totalKcal)+(S.isUnclassifiedSource(m.source)?' kcal transmises (nature à confirmer)':' kcal totales (repos inclus)'):''}`));
+      for(const m of s.members)detail.append(node('p',`${sourceLabel(m.source)} · ${m.title||S.labels[m.kind]} · ${clock(m.start)}–${clock(m.end)} · ${fmtEnergy(m.activeKcal)} kcal actives${m.totalKcal!==null&&m.totalKcal!==undefined?' · '+fmtEnergy(m.totalKcal)+(S.isUnclassifiedSource(m.source)?' kcal transmises (nature à confirmer)':' kcal totales (repos inclus)'):''}${m.distanceMeters!=null?' · '+fmtEnergy(m.distanceMeters)+' m':''}${m.speedKmh!=null?' · '+fmtEnergy(m.speedKmh)+' km/h ('+m.speedSamples+' mesures)':''}`));
       if(energy.estimated)detail.append(node('p','Estimation : total de la séance transmis par la source, moins le repos estimé sur sa durée avec le métabolisme de ton profil.'));
       card.append(detail);box.append(card);
     }

@@ -21,6 +21,7 @@
       if(raw.bridgeVersion!==undefined)result.bridgeVersion=raw.bridgeVersion;
       if(raw.source!=='health-connect'||!Array.isArray(raw.sources)||raw.sources.length>100||raw.sources.some(s=>typeof s!=='string'||!s||s.length>200)||!Array.isArray(raw.sessions)||raw.sessions.length>500||!raw.permissions||['sessions','activeCalories','steps','total'].some(k=>typeof raw.permissions[k]!=='boolean'))throw Error('Import multisource invalide.');
       result.sources=[...new Set(raw.sources)].sort();result.permissions=Object.fromEntries(['sessions','activeCalories','steps','total'].map(k=>[k,raw.permissions[k]]));
+      for(const key of ['distance','speed'])if(raw.permissions[key]!==undefined){if(typeof raw.permissions[key]!=='boolean')throw Error('Autorisation de mouvement invalide.');result.permissions[key]=raw.permissions[key];}
       result.sessions=raw.sessions.map(s=>{const clean=S.validate(s);if(Date.parse(s.start)<start||Date.parse(s.start)>=end||Date.parse(s.end)>captured+300000)throw Error('Séance hors période.');return clean;});
     }return result;
   }

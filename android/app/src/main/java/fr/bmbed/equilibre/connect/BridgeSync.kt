@@ -38,7 +38,8 @@ object BridgeSync {
         val permission=snapshots.getJSONObject(snapshots.length()-1).getJSONObject("permissions").getBoolean("sessions")
         val today=snapshots.getJSONObject(snapshots.length()-1).getJSONArray("sessions")
         val known=(0 until today.length()).count { val s=today.getJSONObject(it);!s.isNull("activeKcal")||!s.isNull("totalKcal") }
-        "Synchronisé le ${ZonedDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM à HH:mm"))} · $days journées · $sessionCount enregistrements de séances, avant regroupement. Aujourd’hui : ${today.length()} séance(s), $known avec des calories.${if(!permission) " Autorisation Séances absente : actualise les autorisations." else " Toutes les sources disponibles ont été lues."}".also { vault.syncSucceeded(it) }
+        val moving=(0 until today.length()).count { val s=today.getJSONObject(it);!s.isNull("speedKmh")||!s.isNull("distanceMeters") }
+        "Synchronisé le ${ZonedDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM à HH:mm"))} · $days journées · $sessionCount enregistrements de séances, avant regroupement. Aujourd’hui : ${today.length()} séance(s), $known avec des calories, $moving avec vitesse ou distance.${if(!permission) " Autorisation Séances absente : actualise les autorisations." else " Toutes les sources disponibles ont été lues."}".also { vault.syncSucceeded(it) }
     } }
 }
 class SyncWorker(context: Context,parameters: WorkerParameters): CoroutineWorker(context,parameters) {

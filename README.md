@@ -90,7 +90,7 @@ Sources officielles consultées le 15 septembre 2026 :
 
 ## Vérification
 
-Exécuter `node --test tests/*.test.cjs` : 85 tests de calculs, migration, pas et marche, historique des objectifs, pesées, sauvegardes, fusion, deux clients simulés, conflits de révision et coupure réseau, projection partielle, couverture manquante, données anciennes, changements d’heure et validation des imports. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
+Exécuter `node --test tests/*.test.cjs` : 93 tests de calculs, migration, pas et marche, historique des objectifs, pesées, sauvegardes, fusion, deux clients simulés, conflits de révision et coupure réseau, projection partielle, couverture manquante, données anciennes, changements d’heure et validation des imports. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
 
 Navigation vérifiée dans le navigateur aux largeurs 320, 390 et 1280 px : une seule vue visible, aucun débordement horizontal, saisie répartie sur plusieurs onglets puis enregistrement, correction d’un champ invalide dans un panneau masqué, ajout d’activité, rechargement des repas/notes/pesée, retour et avance du navigateur, lien historique de connexion `#sync`. Les données de ces essais restent dans le stockage local de la prévisualisation.
 
@@ -151,3 +151,13 @@ Dans Activités, une marche Urevo est accompagnée d’un scénario comparatif �
 Le poids ou le métabolisme absent laisse le repère vide. La valeur source n’est jamais remplacée par ce calcul. La règle est appliquée à l’affichage des imports existants ; aucun document stocké ni objectif quotidien n’est modifié. Un rechargement du site suffit, sans APK supplémentaire. Le validateur des imports n’a pas changé : aucune migration ou nouvelle fonction serveur n’est nécessaire.
 
 Validation : 85 tests JavaScript, dont conservation des décimales Urevo sans métabolisme, absence/valeur zéro, copies et chevauchements, priorité aux calories actives, calcul du repère et données manquantes.
+
+## Distance et vitesse importées
+
+La passerelle lit maintenant `DistanceRecord` et `SpeedRecord` avec les permissions `READ_DISTANCE` et `READ_SPEED`. Installer la dernière APK par-dessus l’ancienne, compléter ces deux autorisations, puis synchroniser relit les 14 derniers jours. La disponibilité réelle chez Urevo doit être confirmée sur le téléphone : l’ancienne passerelle ne demandait pas ces données. [Modèle des séances Santé Connect](https://developer.android.com/health-and-fitness/health-connect/experiences/workouts).
+
+`SessionMotion` associe uniquement les données de la même application au créneau de la séance. Pour la distance, les intervalles doivent être inclus dans la séance et la couvrir entièrement (tolérance d’une seconde) ; une distance journalière ou partielle est rejetée. Les corrections qui se chevauchent sont comptées une fois. Pour la vitesse, les points dans le créneau sont dédupliqués par horodatage et leur moyenne arithmétique est transmise avec le nombre de mesures ; elle n’est pas présentée comme une moyenne temporelle de toute la séance. Aucun point individuel ni GPS n’est envoyé au serveur.
+
+Les champs facultatifs `distanceMeters`, `speedKmh`, `speedSamples` et les permissions `distance`/`speed` sont validés et conservés côté serveur et navigateur. L’absence reste distincte de zéro et les anciens transferts restent valides. Le dashboard choisit une seule source (Urevo en priorité pour une copie Urevo), la nomme, et ne somme jamais les distances des copies. Sans points de vitesse, il calcule `distance / durée totale` à partir du même enregistrement, pauses comprises. Le repère calorique précédent reste explicitement un scénario à 4 km/h, à plat ; une vitesse reçue différente ne transforme pas ce scénario en estimation personnelle.
+
+Redéployer `health-bridge` avec `session-model.js` et `health-model.js`, puis publier le site et l’APK. Aucune migration SQL ou modification des contrôles d’accès. Tests : 93 JavaScript et 7 nouveaux tests Android sur l’association par source, la couverture, les doublons, les corrections, les valeurs nulles et zéro.
