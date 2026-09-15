@@ -7,7 +7,7 @@ const number = new Intl.NumberFormat('fr-FR', {maximumFractionDigits: 2});
 const fmt = n => n === null ? '—' : number.format(n);
 const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const ids = {total: 'total',steps:'steps',walkingKcal:'walking-kcal'};
-const profileIds = {plannedIntake:'profile-intake',base:'profile-base',target:'profile-target',maintenance:'profile-maintenance'};
+const profileIds = {plannedIntake:'profile-intake',base:'profile-base',target:'profile-target',maintenance:'profile-maintenance',includedActivity:'profile-included-activity'};
 let data = {version: 4, days: {},profile:M.blankProfile()}, selected = localDate(), activities = [], editingActivityId=null, dirty = false, profileDirty=false, profileWeightDirty=false, locked = false, intakeMode = 'meals', legacyIntake = null, cloudBase = {}, cloudProfileBase=null;
 const readLocal=()=>localStorage.getItem(LOCAL_KEY)||localStorage.getItem('equilibre-journal-v3')||localStorage.getItem('equilibre-journal-v2')||localStorage.getItem('equilibre-journal-v1');
 const viewIds = ['bilan', 'repas', 'activites', 'tendances', 'compte'];
@@ -75,12 +75,13 @@ function renderProfileCalculation(){
   const average=$('profile-mode').value!=='base';
   $('profile-maintenance-field').hidden=!average;$('profile-base-field').hidden=average;$('profile-target-field').hidden=average;
   $('profile-maintenance').disabled=!average;$('profile-base').disabled=average;$('profile-target').disabled=average;
+  $('profile-included-field').hidden=!average;$('profile-included-activity').disabled=!average;
   $('profile-goal-fields').classList.toggle('maintenance-mode',average);
   const maintenance=$('profile-maintenance').value===''?null:Number($('profile-maintenance').value),intake=$('profile-intake').value===''?null:Number($('profile-intake').value);
   const gap=maintenance===null||intake===null?null:maintenance-intake;
   const base=$('profile-base').value===''?null:Number($('profile-base').value),target=$('profile-target').value===''?null:Number($('profile-target').value);
   $('profile-calculation').textContent=average?(gap===null?'Renseigne le maintien et les apports pour obtenir le déficit prévu.':gap>=0?`Déficit prévu : ${fmt(gap)} kcal/jour (maintien − apports).`:`Surplus prévu : ${fmt(-gap)} kcal/jour (apports au-dessus du maintien).`):base===null||target===null?'Renseigne la dépense hors séances et le déficit visé pour calculer un objectif d’apports différent chaque jour.':`Jour sans activité ajoutée : objectif de ${fmt(Math.max(0,base-target))} kcal. Les calories des séances et de la marche augmenteront cet objectif.`;
-  $('profile-energy-help').textContent=$('profile-mode').value==='adaptive'?'Le maintien sert de départ. Santé Connect fournit la dépense cumulée ; l’historique permet d’estimer le reste jusqu’à minuit. Sans données suffisantes, le maintien est conservé. Les séances et la marche ne sont pas ajoutées une seconde fois.':average?'Le maintien comprend déjà le repos, la digestion, les mouvements et le sport habituels, en moyenne sur la semaine. Les séances et la marche du journal ne sont pas ajoutées une seconde fois. Une dépense totale de montre remplace cette estimation.':'La dépense hors séances exclut les séances et la marche renseignées dans le journal. Objectif du jour = base + calories actives − déficit visé. Les pas seuls sont informatifs : leurs calories doivent être saisies séparément.';
+  $('profile-energy-help').textContent=$('profile-mode').value==='adaptive'?'Le maintien sert de départ. Santé Connect fournit la dépense cumulée ; l’historique permet d’estimer le reste jusqu’à minuit. Sans total fiable, seul le dépassement de l’activité déjà comprise dans le maintien est ajouté. Sans ce repère renseigné, le maintien reste fixe.':average?'Le maintien comprend déjà le repos, la digestion, les mouvements et le sport habituels, en moyenne sur la semaine. Les séances et la marche du journal ne sont pas ajoutées une seconde fois. Une dépense totale de montre remplace cette estimation.':'La dépense hors séances exclut les séances et la marche renseignées dans le journal. Objectif du jour = base + calories actives − déficit visé. Les pas seuls sont informatifs : leurs calories doivent être saisies séparément.';
 }
 function renderProfile(){
   if(profileDirty)return;
@@ -102,7 +103,7 @@ function saveProfile(){
     if($('profile-mode').value!=='base'){
       goals.base=null;const gap=goals.maintenance===null||goals.plannedIntake===null?null:goals.maintenance-goals.plannedIntake;
       goals.target=gap!==null&&gap>=0?gap:null;
-    }else goals.maintenance=null;
+    }else {goals.maintenance=null;goals.includedActivity=null;}
     goals.adaptive=$('profile-mode').value==='adaptive';
     if(JSON.stringify(goals)!==JSON.stringify(M.goalsAt(next.profile,localDate())||M.blankGoals())){
       // A new setting applies from today, including any dates planned in the old journal.
@@ -169,7 +170,7 @@ function renderSummary() {
   $('resting-summary').hidden=data.profile.resting===null;
   const average=goals.maintenance!==null;
   $('goals-summary').textContent=average?`Maintien moyen : ${fmt(goals.maintenance)} kcal/j · Apports prévus : ${fmt(goals.plannedIntake)} kcal/j`:`Dépense hors séances : ${fmt(goals.base)} kcal · Déficit cible : ${fmt(goals.target)} kcal · Objectif ajusté selon l’activité du jour`;
-  $('activity-calculation').textContent=average?'Ton maintien inclut déjà le sport et la marche habituels. Les saisies restent visibles mais ne sont pas ajoutées au bilan. Un total quotidien de montre remplace cette estimation.':'Les calories des séances et de la marche s’ajoutent à ta dépense hors séances. Modifie-les chaque jour avec les valeurs réellement mesurées.';
+  $('activity-calculation').textContent=average?(goals.adaptive&&goals.includedActivity!==null?`Le maintien comprend déjà ${fmt(goals.includedActivity)} kcal d’activité. Seul le dépassement s’ajoute à cette référence, sauf si un total quotidien fiable remplace le calcul. Les plages Google Fit englobant une séance d’une autre source ne sont pas ajoutées.`:'Ton maintien inclut déjà le sport et la marche habituels. Un total quotidien de montre remplace cette estimation.'):'Les calories des séances et de la marche s’ajoutent à ta dépense hors séances. Modifie-les chaque jour avec les valeurs réellement mesurées.';
   const known=M.latestWeight(data.profile,data.days,selected);
   $('known-weight').textContent=known?`Dernier poids connu : ${fmt(known.weight)} kg · pesée du ${known.date.split('-').reverse().join('/')}`:'Poids à renseigner dans ton profil ou dans Suivi.';
   const meals=M.mealSummary(day);$('intake').textContent=fmt(day.intake);
@@ -184,11 +185,12 @@ function renderSummary() {
   metric('intake-value', day.intake); metric('expenditure-value', b.plannedExpense); metric('planned-value', b.planned); metric('actual-value', b.actual);
   const targetExpense=day.total!==null||!day.activities.some(a=>a.state==='planned')?b.actualExpense:b.plannedExpense;
   const intakeTarget=day.adaptive&&b.plannedExpense!==null&&day.target!==null?Math.max(0,b.plannedExpense-day.target):M.dailyIntakeTarget(day,targetExpense);
+  $('planned-detail').textContent=day.adaptive?`Avec l’objectif du jour : ${fmt(intakeTarget)} kcal`:'Dépense prévue − apports prévus';
   $('intake-detail').textContent = intakeTarget === null ? 'Objectif calorique du jour à compléter' : `Objectif du jour : ${fmt(intakeTarget)} kcal`;
-  window.BalanceVisual?.render({day,intakeTarget,expense:b.plannedExpense,sessions:imported,resting:data.profile.resting,state:window.HealthBridge?.activityState(selected)||{},completed:meals.completed});
+  window.BalanceVisual?.render({day,intakeTarget,expense:day.total??b.plannedExpense,sessions:imported,resting:data.profile.resting,state:window.HealthBridge?.activityState(selected)||{},completed:meals.completed,projection:health});
   $('expenditure-detail').textContent = average?'Maintien moyen · activité habituelle incluse':b.plannedExpense === null ? 'Base ou calories actives à compléter' : 'Base + séances + marche';
-  if(day.adaptive)$('expenditure-detail').textContent=health?.status==='projected'?'Projection actualisée pour minuit':health?.status==='complete'?'Total importé de la journée':health?.status==='manual'?'Total saisi manuellement':'Maintien moyen en attente de données';
-  const origin = day.total !== null ? 'Total quotidien saisi' : day.adaptive&&health?.status==='projected'?'Projection à minuit':day.adaptive&&health?.status==='complete'?'Total importé':average?'Estimation au maintien moyen':'Base + séances réalisées + marche';
+  if(day.adaptive)$('expenditure-detail').textContent=health?.status==='projected'?'Projection actualisée pour minuit':health?.status==='complete'?'Total importé de la journée':health?.status==='manual'?'Total saisi manuellement':health?.status==='activity'?'Maintien + supplément d’activité':'Maintien moyen en attente de données';
+  const origin = day.total !== null ? 'Total quotidien saisi' : day.adaptive&&health?.status==='projected'?'Projection à minuit':day.adaptive&&health?.status==='complete'?'Total importé':day.adaptive&&health?.status==='activity'?'Maintien + supplément d’activité':average?'Estimation au maintien moyen':'Base + séances réalisées + marche';
   $('actual-detail').textContent = b.actual === null ? 'Apports ou dépense à compléter' : `${origin}${meals.completed !== null && meals.completed < 4 ? ' · repas incomplets' : ''}${day.target !== null ? ` · cible : ${fmt(day.target)} kcal` : ''}`;
 }
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }

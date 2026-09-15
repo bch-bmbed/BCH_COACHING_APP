@@ -40,13 +40,18 @@
   }
   function projection(day,date){
     const s=combined.find(s=>s.day===date);
-    return H.project({day:{...day,resting:window.Journal?.profile().resting},date,today:window.Journal?.today()||new Date().toLocaleDateString('en-CA'),snapshot:s,history:combined});
+    const p=H.project({day:{...day,resting:window.Journal?.profile().resting},date,today:window.Journal?.today()||new Date().toLocaleDateString('en-CA'),snapshot:s,history:combined});
+    if(p.status==='reference'&&day.adaptive&&day.includedActivity!=null&&day.maintenance!=null){
+      const a=window.EquilibreBalance.activities(day,S.dedupe(s?.sessions||[]),window.Journal?.profile().resting,{available:s?.permissions?.sessions===true});
+      const e=window.EquilibreBalance.expenditure(day,a,p);
+      return {...p,expense:e.expense,status:'activity',reason:`${p.reason} Estimation utilisée : maintien + activité au-delà des ${fmt(e.included)} kcal déjà incluses. Les calories non disponibles ne sont pas inventées.`};
+    }return p;
   }
   const sessionsOn=date=>S.dedupe(combined.find(s=>s.day===date)?.sessions||[]);
   const node=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
   function renderSessions(date){
     const snapshot=combined.find(s=>s.day===date),sessions=sessionsOn(date),box=$('imported-activities');box.replaceChildren();
-    const journal=window.Journal?.snapshot(),knownWeight=journal?window.Equilibre.latestWeight(journal.profile,journal.days,date):null,resting=journal?.profile.resting;
+    const journal=window.Journal?.snapshot(),knownWeight=journal?window.Equilibre.latestWeight(journal.profile,journal.days,date):null,resting=journal?.profile.resting,excluded=S.excludedEnergy(sessions,resting);
     $('imported-steps').textContent=snapshot?.steps===null||snapshot?.steps===undefined?'Pas du jour : aucune donnée importée':`Pas du jour : ${fmt(snapshot.steps)} · séances incluses`;
     const count=sessions.reduce((n,s)=>n+s.copies,0);$('imported-count').textContent=`${sessions.length} séance${sessions.length>1?'s':''}${count?' · '+count+' copie(s) regroupée(s)':''}`;
     $('imported-status').textContent=lastError||(!user?'Connecte-toi pour retrouver tes séances importées.':!snapshot?'Aucun envoi reçu pour cette date.':snapshot.version<2?'La première version ne transmettait pas les séances. Mets à jour Équilibre Connect et autorise les séances, puis synchronise.':!snapshot.permissions.sessions?'Lecture des séances non autorisée. Les imports précédents restent conservés. Dans Équilibre Connect, actualise les autorisations.':!sessions.length?'Aucune séance écrite dans Santé Connect pour cette date lors du dernier envoi. Vérifie Données → Activité → Exercice dans Santé Connect, puis synchronise à nouveau.':`Transfert du ${time(snapshot.capturedAt)} · horaires affichés dans le fuseau ${snapshot.zone}.`);
@@ -55,6 +60,7 @@
       const card=node('article');card.className='imported-session';const energy=S.energy(s,resting),motion=S.motion(s),minutes=(Date.parse(s.end)-Date.parse(s.start))/60000;
       const calories=energy.kcal===null?'calories non disponibles':energy.basis==='source'?fmtEnergy(energy.kcal)+' kcal transmises par Urevo':(energy.estimated?'≈ ':'')+fmtEnergy(energy.kcal)+' kcal actives'+(energy.estimated?' estimées':' sur ce créneau');
       card.append(node('h3',s.title),node('p',`${clock(s.start)}–${clock(s.end)} · ${fmtEnergy(minutes)} min · ${calories}`),node('small',s.sources.map(sourceLabel).join(' + ')+(s.copies?` · ${s.copies} copie(s) regroupée(s)`:'')));
+      if(excluded.has(S.key(s))){card.classList.add('excluded-session');card.append(node('p',`Non ajoutée au bilan : cette plage Google Fit englobe une séance ${excluded.get(S.key(s)).map(sourceLabel).join(' / ')}. Sans détail des calories hors chevauchement, seule la séance de l’autre source est comptée.`));}
       if(energy.basis==='source')card.append(node('p','Nature à confirmer : valeur Urevo conservée sans soustraire le repos.'));
       if(motion){
         const distance=motion.distanceMeters===null?'':`${fmtKm(motion.distanceMeters)} km · `;
@@ -106,7 +112,7 @@
       renderSessions(date);
       $('health-observed').textContent=fmt(p.observed)+' kcal';$('health-remaining').textContent=fmt(p.remaining)+' kcal';
       $('health-projection').textContent=fmt(p.expense)+' kcal';
-      $('health-badge').textContent=({reference:'Maintien conservé',manual:'Total saisi',projected:'Projection provisoire',complete:'Journée complète'})[p.status];
+      $('health-badge').textContent=({reference:'Maintien conservé',activity:'Maintien + supplément d’activité',manual:'Total saisi',projected:'Projection provisoire',complete:'Journée complète'})[p.status];
       $('health-detail').textContent=(adaptive?p.reason:'Active « Maintien ajusté par Santé Connect » dans Compte pour utiliser ces données dans le bilan.')+(lastError?' '+lastError:'');
       $('health-updated').textContent=`Données jusqu’au ${time(p.through)} · transfert ${time(p.capturedAt)} · ${sourceLabel(combined.find(s=>s.day===date)?.source||'health-connect')}`;
       $('health-steps').textContent=p.steps===null?'Pas importés : non disponibles':`Pas importés, séances incluses : ${fmt(p.steps)}`;

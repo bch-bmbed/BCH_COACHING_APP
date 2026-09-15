@@ -2,9 +2,10 @@ package fr.bmbed.equilibre.connect
 
 import java.time.Instant
 
-data class EnergyInterval(val start: Instant, val end: Instant, val kcal: Double, val modified: Instant)
+data class EnergyInterval(val start: Instant, val end: Instant, val kcal: Double, val modified: Instant,val source: String="")
 data class EnergyBin(val start: Instant, val end: Instant, val total: Double?, val covered: Double, val maxRecordSeconds: Double)
 object EnergyIntervals {
+    fun sessionTotalForSource(source: String,start: Instant,end: Instant,records: List<EnergyInterval>): Double? = sessionTotal(start,end,records.filter { it.source==source })
     fun sessionTotal(start: Instant,end: Instant,records: List<EnergyInterval>): Double? {
         val seconds=(end.toEpochMilli()-start.toEpochMilli())/1000.0
         if(seconds<=0)return null

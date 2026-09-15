@@ -6,6 +6,13 @@ import java.time.Instant
 
 class EnergyIntervalsTest {
     private val start=Instant.parse("2026-01-01T00:00:00Z")
+    @Test fun workoutCaloriesCannotBeAssignedToAnotherAppsLongerSession() {
+        val end=start.plusSeconds(2400)
+        val records=listOf(EnergyInterval(start,end,240.0,end,"watch"))
+        assertEquals(240.0,EnergyIntervals.sessionTotalForSource("watch",start,end,records)!!,0.01)
+        assertNull(EnergyIntervals.sessionTotalForSource("fit",start.minusSeconds(1800),end.plusSeconds(1200),records))
+        assertNull(EnergyIntervals.sessionTotalForSource("watch",start.minusSeconds(1800),end.plusSeconds(1200),records))
+    }
     @Test fun sessionTotalRequiresCoverageAndRejectsDailyProrating() {
         val end=start.plusSeconds(1800)
         assertEquals(150.0,EnergyIntervals.sessionTotal(start,end,listOf(EnergyInterval(start,end,150.0,start)))!!,0.01)

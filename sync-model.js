@@ -55,7 +55,7 @@
       if(!Object.hasOwn(b.goals,date) && !Object.hasOwn(r.goals,date)){result.goals[date]=copy(l.goals[date]);continue;}
       const bg=M.goalsAt(b,date)||M.blankGoals(),lg=M.goalsAt(l,date)||M.blankGoals(),rg=M.goalsAt(r,date)||M.blankGoals();
       // The amount and its meaning change together: a total maintenance is not a base excluding sport.
-      const expense=g=>({base:g.base,maintenance:g.maintenance,adaptive:g.adaptive??false});
+      const expense=g=>({base:g.base,maintenance:g.maintenance,includedActivity:g.includedActivity??null,adaptive:g.adaptive??false});
       const mergedExpense=merge('profile.goals.'+date+'.expense',expense(bg),expense(lg),expense(rg));
       result.goals[date]={...Object.fromEntries(['plannedIntake','target'].map(key=>[key,merge('profile.goals.'+date+'.'+key,bg[key],lg[key],rg[key])])),...mergedExpense};
     }

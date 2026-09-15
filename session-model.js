@@ -50,14 +50,28 @@
     return {kcal:null,estimated:false,basis:'unknown',start:session.start,end:session.end};
   }
   function energySummary(sessions,resting){
-    const values=sessions.map(s=>({...energy(s,resting),key:key(s)})),known=values.filter(v=>v.kcal!==null),boundaries=[...new Set(known.flatMap(v=>[Date.parse(v.start),Date.parse(v.end)]))].sort((a,b)=>a-b);
+    const excluded=excludedEnergy(sessions,resting),values=sessions.filter(s=>!excluded.has(key(s))).map(s=>({...energy(s,resting),key:key(s)})),known=values.filter(v=>v.kcal!==null),boundaries=[...new Set(known.flatMap(v=>[Date.parse(v.start),Date.parse(v.end)]))].sort((a,b)=>a-b);
     let total=0,overlap=false;const used=new Set(),priority={active:0,source:1,derived:2};
     for(let i=1;i<boundaries.length;i++){
       const a=boundaries[i-1],b=boundaries[i],cover=known.filter(v=>Date.parse(v.start)<=a&&Date.parse(v.end)>=b).sort((x,y)=>priority[x.basis]-priority[y.basis]||(Date.parse(x.end)-Date.parse(x.start))-(Date.parse(y.end)-Date.parse(y.start))||x.key.localeCompare(y.key));
       if(cover.length>1)overlap=true;
       if(cover.length){total+=cover[0].kcal*(b-a)/(Date.parse(cover[0].end)-Date.parse(cover[0].start));used.add(cover[0].basis);}
     }
-    return {kcal:known.length?Math.round(total):sessions.length?null:0,count:sessions.length,missing:values.length-known.length,estimated:used.has('derived')||overlap,restAdjusted:used.has('derived'),unclassified:used.has('source'),overlap};
+    return {kcal:known.length?Math.round(total):sessions.length?null:0,count:values.length,receivedCount:sessions.length,excludedCount:excluded.size,missing:values.length-known.length,estimated:used.has('derived')||overlap,restAdjusted:used.has('derived'),unclassified:used.has('source'),overlap};
+  }
+  function excludedEnergy(sessions,resting){
+    const result=new Map(),fit='com.google.android.apps.fitness';
+    for(const s of sessions){
+      if(!(s.members||[s]).every(m=>m.source===fit))continue;
+      const a=Date.parse(s.start),b=Date.parse(s.end);
+      const matches=sessions.filter(other=>other!==s&&(other.members||[other]).some(m=>m.source!==fit)&&energy(other,resting).kcal!==null).filter(other=>{
+        const c=Date.parse(other.start),d=Date.parse(other.end),overlap=Math.max(0,Math.min(b,d)-Math.max(a,c));
+        return b-a>=(d-c)*1.2&&overlap/(d-c)>=.85;
+      });
+      // Fit can auto-detect a long walk around a recorded workout. Its aggregate
+      // cannot be spread onto the remaining minutes without counting the workout twice.
+      if(matches.length)result.set(key(s),[...new Set(matches.flatMap(m=>m.sources||[m.source]))]);
+    }return result;
   }
   function walkingReference(minutes,weight,resting){
     if(!Number.isFinite(minutes)||minutes<=0||!Number.isFinite(weight)||weight<=0||!Number.isFinite(resting)||resting<=0)return null;
@@ -65,5 +79,5 @@
     const grossLow=3*weight*minutes/60,grossHigh=3.5*weight*minutes/60,restKcal=resting*minutes/1440;
     return {minutes,weight,resting,speed:4,incline:0,grossLow,grossHigh,restKcal,activeLow:Math.max(0,grossLow-restKcal),activeHigh:Math.max(0,grossHigh-restKcal)};
   }
-  const api={validate,dedupe,labels,energy,energySummary,isUnclassifiedSource,walkingReference,motion};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreSessions=api;
+  const api={validate,dedupe,labels,energy,energySummary,isUnclassifiedSource,walkingReference,motion,excludedEnergy,key};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreSessions=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

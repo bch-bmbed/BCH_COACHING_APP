@@ -12,5 +12,14 @@
     const activityRatio=activity!==null&&expense!==null&&expense>0&&activity<=expense?activity/expense:null;
     return {ratio,ring:ratio===null?0:Math.min(1,Math.max(0,ratio)),remaining:intake===null||target===null?null:target-intake,activityRatio,inconsistent:activity!==null&&expense!==null&&activity>expense};
   }
-  const api={activities,progress};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreBalance=api;
+  function expenditure(day,activity,projection=null){
+    const maintenance=day.maintenance??null,included=day.includedActivity??null;
+    const excess=activity.kcal===null||included===null?null:Math.max(0,activity.kcal-included);
+    const result={maintenance,included,activity:activity.kcal,excess,expense:maintenance,adjustment:0,method:'reference',provisional:Boolean(activity.missing||activity.unclassified||activity.estimated||activity.excludedCount)};
+    if(day.total!=null)return {...result,expense:day.total,adjustment:maintenance===null?null:day.total-maintenance,method:'manual'};
+    if(day.adaptive&&['projected','complete'].includes(projection?.status))return {...result,expense:projection.expense,adjustment:maintenance===null?null:projection.expense-maintenance,method:projection.status};
+    if(day.adaptive&&maintenance!==null&&included!==null)return {...result,expense:maintenance+(excess??0),adjustment:excess??0,method:'activity'};
+    return result;
+  }
+  const api={activities,progress,expenditure};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreBalance=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

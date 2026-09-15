@@ -15,8 +15,8 @@
   function optionalNumber(value, max, min = 0) {
     return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max);
   }
-  const goalFields = {plannedIntake: 30000, base: 30000, target: 10000, maintenance:30000};
-  const blankGoals = () => ({plannedIntake:null,base:null,target:null,maintenance:null,adaptive:false});
+  const goalFields = {plannedIntake: 30000, base: 30000, target: 10000, maintenance:30000,includedActivity:30000};
+  const blankGoals = () => ({plannedIntake:null,base:null,target:null,maintenance:null,includedActivity:null,adaptive:false});
   const blankProfile = () => ({goals:{},weights:{},resting:null});
   function validateProfile(raw) {
     if(!raw || typeof raw!=='object' || !raw.goals || !raw.weights || Array.isArray(raw.goals) || Array.isArray(raw.weights) || typeof raw.goals!=='object' || typeof raw.weights!=='object' || Object.keys(raw.goals).length>20000 || Object.keys(raw.weights).length>20000)throw Error('Profil invalide.');
@@ -27,11 +27,12 @@
       if(!validDate(date) || !raw.goals[date] || typeof raw.goals[date]!=='object')throw Error('Date d’objectif invalide.');
       const goals=blankGoals();
       for(const [key,max] of Object.entries(goalFields)){
-        const value=key==='maintenance'?(raw.goals[date][key]??null):raw.goals[date][key];
+        const value=['maintenance','includedActivity'].includes(key)?(raw.goals[date][key]??null):raw.goals[date][key];
         if(!optionalNumber(value,max))throw Error('Objectif invalide : '+key);
         goals[key]=value;
       }
       if(raw.goals[date].adaptive!==undefined&&typeof raw.goals[date].adaptive!=='boolean')throw Error('Mode de projection invalide.');
+      if(goals.includedActivity!==null&&(goals.maintenance===null||goals.includedActivity>goals.maintenance))throw Error('L’activité incluse doit être comprise dans le maintien.');
       goals.adaptive=raw.goals[date].adaptive??false;result.goals[date]=goals;
     }
     for(const date of Object.keys(raw.weights).sort()){
