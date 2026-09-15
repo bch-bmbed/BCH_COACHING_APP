@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#142c3a"><meta name="description" content="Journal personnel des apports, activités, bilans énergétiques et pesées.">
+  <title>Équilibre · Mon journal</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
+  <script defer src="model.js"></script><script defer src="app.js"></script>
+</head>
+<body>
+<header><a class="brand" href="#journal"><span class="brand-icon">é.</span> équilibre<span class="brand-sub">MON SUIVI PERSONNEL</span></a><nav aria-label="Navigation principale"><a href="#journal">Journal</a><a href="#tendances">Tendances</a><a href="#sources">Sources & données</a></nav><span class="storage-label">Enregistré sur cet appareil</span></header>
+<main>
+  <section id="journal">
+    <div class="section-heading"><div><p class="eyebrow">UN JOUR À LA FOIS</p><h1>Mon équilibre quotidien</h1></div><div class="date-control"><button id="previous" aria-label="Jour précédent">←</button><label class="sr-only" for="date">Date du journal</label><input id="date" type="date" required><button id="next" aria-label="Jour suivant">→</button><button id="today">Aujourd’hui</button></div></div>
+    <p id="storage-error" role="alert" hidden></p><p id="status" class="status" role="status" aria-live="polite">Prêt pour ta première saisie.</p>
+    <div class="metrics">
+      <article class="metric"><span>Apports consommés</span><strong id="intake-value">—</strong><small id="intake-detail">À renseigner</small></article>
+      <article class="metric"><span>Dépense prévue</span><strong id="expenditure-value">—</strong><small id="expenditure-detail">Base + activités prévues</small></article>
+      <article class="metric accent"><span>Déficit prévu</span><strong id="planned-value">—</strong><small>Dépense prévue − apports prévus</small></article>
+      <article class="metric"><span>Bilan estimé du jour</span><strong id="actual-value">—</strong><small id="actual-detail">Dépense estimée − apports consommés</small></article>
+    </div>
+    <div class="workspace">
+      <form id="day-form" class="panel entry-panel">
+        <div class="panel-heading"><h2>Ma journée</h2><span id="day-label" class="muted"></span></div>
+        <div class="fields">
+          <label>Apports prévus <span>kcal</span><input id="planned-intake" type="number" min="0" max="30000" step="1" placeholder="À renseigner"></label>
+          <label>Apports consommés <span>kcal</span><input id="intake" type="number" min="0" max="30000" step="1" placeholder="À renseigner"></label>
+          <label>Dépense hors séances <span>kcal / jour</span><input id="base" type="number" min="0" max="30000" step="1" placeholder="Ton estimation"></label>
+          <label>Déficit cible <span>kcal / jour</span><input id="target" type="number" min="0" max="10000" step="1" placeholder="Facultatif"></label>
+        </div>
+        <p class="hint">La dépense hors séances comprend le repos et les mouvements habituels. N’y inclus pas les séances ajoutées ci-dessous.</p>
+        <label class="full">Dépense totale mesurée <span>kcal · facultatif</span><input id="total" type="number" min="0" max="30000" step="1" placeholder="Total du jour indiqué par ta montre"></label>
+        <p class="hint">Si renseignée, cette valeur remplace la base + les séances réalisées pour le bilan estimé. Les activités ne sont pas ajoutées une deuxième fois.</p>
+        <div class="fields"><label>Pesée <span>kg · facultatif</span><input id="weight" type="number" min="1" max="600" step="0.01" placeholder="À renseigner"></label><label>Note du jour<textarea id="note" maxlength="1000" rows="2" placeholder="Énergie, sensations…"></textarea></label></div>
+        <div class="save-row"><button class="primary" type="submit">Enregistrer la journée</button><span id="save-state" class="muted">Les champs vides restent inconnus.</span></div>
+      </form>
+      <div class="panel activity-panel">
+        <div class="panel-heading"><h2>Activités sportives</h2><span id="activity-count" class="pill">0 séance</span></div>
+        <div id="activities" class="activity-list"></div>
+        <form id="activity-form">
+          <label>Activité<input id="activity-name" required maxlength="100" placeholder="Marche sur tapis, course, musculation…"></label>
+          <div class="fields"><label>Durée <span>minutes</span><input id="activity-minutes" required type="number" min="1" max="1440" step="1" placeholder="30"></label><label>Calories actives <span>kcal</span><input id="activity-kcal" type="number" min="0" max="20000" step="1" placeholder="Si connues"></label></div>
+          <div class="fields"><label>État<select id="activity-state"><option value="done">Réalisée</option><option value="planned">Prévue</option></select></label><label>Source de la saisie<select id="activity-source"><option value="manual">Manuelle</option><option value="garmin">Garmin Connect</option><option value="urevo">Urevo</option><option value="google-fit">Google Fit</option><option value="other">Autre appareil</option></select></label></div>
+          <p class="hint">Toutes les activités sont saisies à la main pour le moment. Ajoute chaque séance une seule fois, même si elle apparaît dans plusieurs applications.</p>
+          <button class="secondary" type="submit">+ Ajouter l’activité</button>
+        </form>
+      </div>
+    </div>
+  </section>
+  <section id="tendances">
+    <div class="section-heading"><div><p class="eyebrow">PRENDRE DU RECUL</p><h2>Mes tendances</h2></div><span class="muted">14 jours jusqu’à la date sélectionnée</span></div>
+    <div class="chart-grid"><article class="panel"><div class="panel-heading"><h3>Bilan énergétique</h3><span class="muted">kcal</span></div><div class="legend"><span><i class="planned-key"></i>Prévu</span><span><i class="actual-key"></i>Estimé</span></div><div id="energy-chart" class="chart"></div><p class="hint">Positif = déficit, négatif = surplus. Une journée incomplète n’est pas comptée comme zéro.</p></article><article class="panel"><div class="panel-heading"><h3>Évolution du poids</h3><span id="weight-average" class="muted">Aucune pesée</span></div><div id="weight-chart" class="chart"></div><p class="hint">Pesées saisies et moyenne des pesées sur les 7 derniers jours. Aucune conversion automatique du déficit en perte de poids.</p></article></div>
+    <div class="panel history-panel"><div class="panel-heading"><h3>Historique</h3><span class="muted">30 dernières journées saisies · cliquer pour modifier</span></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Consommé</th><th>Déficit prévu</th><th>Bilan estimé</th><th>Poids</th><th>Séances</th></tr></thead><tbody id="history"></tbody></table></div></div>
+  </section>
+  <section id="sources"><div class="section-heading"><div><p class="eyebrow">UN SUIVI QUI PEUT ÉVOLUER</p><h2>Sources & données</h2></div><span class="pill">Connexions automatiques à configurer</span></div>
+    <div class="source-grid"><article class="panel"><h3>Google Fit / Android</h3><p>Les API Google Fit arrivent en fin de support fin 2026. Health Connect est une piste pour regrouper les données sur Android, avec une passerelle mobile.</p><a href="https://developer.android.com/health-and-fitness/health-connect/migration/fit" target="_blank" rel="noreferrer">Migration Google ↗</a></article><article class="panel"><h3>Garmin Connect</h3><p>La connexion directe officielle nécessite un accès professionnel approuvé. Le partage vers Health Connect peut être une alternative sur Android.</p><a href="https://developer.garmin.com/gc-developer-program/program-faq/" target="_blank" rel="noreferrer">Conditions Garmin ↗</a></article><article class="panel"><h3>Urevo & futurs appareils</h3><p>Urevo annonce un partage avec Google Fit et Apple Health. Le parcours exact dépend de ton téléphone et de l’application. Aucun compte n’est connecté ici.</p><a href="https://www.urevo.us/pages/urevo-app" target="_blank" rel="noreferrer">Compatibilités Urevo ↗</a></article></div>
+    <div class="panel backup"><div><h3>Mes données restent avec moi</h3><p>Cette version sauvegarde uniquement dans ce navigateur. Exporte une sauvegarde pour changer d’appareil ou avant d’effacer les données du navigateur.</p><p class="hint">L’import accepte les sauvegardes JSON de ce dashboard et ajoute uniquement les dates absentes. Les exports Garmin et Urevo ne sont pas encore pris en charge.</p></div><div class="backup-actions"><button id="export" class="secondary">Exporter une sauvegarde</button><label class="file-button">Importer une sauvegarde<input id="import" type="file" accept=".json,application/json"></label></div></div>
+  </section>
+</main><footer>Équilibre · Version locale 1 <span>Les dépenses et les bilans sont des estimations.</span></footer>
+</body></html>

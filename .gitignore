@@ -1,0 +1,10 @@
+# Sauvegardes personnelles et secrets : ne jamais publier.
+equilibre-*.json
+backups/
+imports/
+.env
+.env.*
+!.env.example
+node_modules/
+.DS_Store
+Thumbs.db
