@@ -176,9 +176,10 @@ function renderSummary() {
   for(const [key,meal] of Object.entries(day.meals)) $('meal-total-'+key).textContent=meal.kcal===null?'À renseigner':fmt(meal.kcal)+' kcal';
   $('overview-meals').textContent=meals.completed===null?'Ancien total conservé':`${meals.completed}/4 renseignés`;
   const stepsText=day.steps===null?'pas non renseignés':`${fmt(day.steps)} pas`;
-  $('day-type').textContent=M.dayType(day)==='sport'?'Journée avec sport':'Journée sans séance';
+  const imported=window.HealthBridge?.sessions(selected)||[];
+  $('day-type').textContent=M.dayType(day)==='sport'||imported.length?'Journée avec sport':'Journée sans séance';
   $('movement-summary').textContent=`${stepsText} · ${day.walkingKcal===null?'calories de marche non renseignées':fmt(day.walkingKcal)+' kcal de marche'}`;
-  $('overview-activities').textContent=`${day.activities.length} séance${day.activities.length>1?'s':''} · ${stepsText}`;
+  $('overview-activities').textContent=`${imported.length} importée(s) · ${day.activities.length} saisie(s) · ${window.HealthBridge?.steps(selected)!==null&&window.HealthBridge?.steps(selected)!==undefined?fmt(window.HealthBridge.steps(selected))+' pas importés':stepsText}`;
   $('meal-progress').textContent=intakeMode==='legacy'?'L’ancien total reste utilisé. La répartition est facultative.':`${meals.completed}/4 repas renseignés · ${fmt(meals.total)} kcal${meals.completed < 4 ? ' · total provisoire' : ''}. Saisis 0 pour un repas non pris.`;
   metric('intake-value', day.intake); metric('expenditure-value', b.plannedExpense); metric('planned-value', b.planned); metric('actual-value', b.actual);
   const targetExpense=day.total!==null||!day.activities.some(a=>a.state==='planned')?b.actualExpense:b.plannedExpense;
@@ -192,8 +193,8 @@ function renderSummary() {
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }
 function renderActivities() {
   const box = $('activities'); box.replaceChildren();
-  $('activity-count').textContent = `${activities.length} séance${activities.length > 1 ? 's' : ''}`;
-  if (!activities.length) { const empty = el('div', undefined, 'empty'); empty.append(el('strong','Une marche, une séance, un peu de mouvement.'),el('span','Ajoute une activité prévue ou réalisée.')); box.append(empty); }
+  $('activity-count').textContent = `${activities.length} saisie${activities.length > 1 ? 's' : ''} manuelle${activities.length > 1 ? 's' : ''}`;
+  if (!activities.length) { const empty = el('div', undefined, 'empty'); empty.append(el('strong','Aucune saisie manuelle.'),el('span','Ajoute ici une séance prévue ou absente des imports.')); box.append(empty); }
   activities.forEach(a => {
     const row = el('div', undefined, 'activity'), info = el('div', undefined, 'activity-info'), actions = el('div',undefined,'activity-actions');
     info.append(el('strong', a.name), el('small', `${a.minutes} min · ${a.kcal === null ? 'Calories inconnues' : fmt(a.kcal)+' kcal'} · ${M.sources[a.source]}`));
@@ -245,13 +246,14 @@ function renderTrends() {
   const weights = points.slice(-7).filter(p => p.weight !== null).map(p => p.weight);
   $('weight-average').textContent = weights.length ? `Moy. 7 j : ${fmt(weights.reduce((a,b)=>a+b,0)/weights.length)} kg · ${weights.length} pesée${weights.length > 1 ? 's' : ''}` : 'Aucune pesée sur 7 jours';
   const body = $('history'); body.replaceChildren();
-  const dates = [...new Set([...Object.keys(data.days),...Object.keys(data.profile.weights).filter(date=>data.profile.weights[date]!==null)])].sort().reverse().slice(0,30);
+  const dates = [...new Set([...Object.keys(data.days),...(window.HealthBridge?.dates()||[]),...Object.keys(data.profile.weights).filter(date=>data.profile.weights[date]!==null)])].sort().reverse().slice(0,30);
   if (!dates.length) { const td = el('td','Aucune journée enregistrée pour le moment.');td.colSpan=8; const row=el('tr');row.append(td);body.append(row); }
   dates.forEach(date => {
     const day=M.effectiveDay(data.days[date],data.profile,date),b=balanceFor(day,date),weight=M.weightOn(data.profile,data.days,date),row=el('tr'),td=el('td'),button=el('button',new Date(date+'T12:00:00').toLocaleDateString('fr-FR'));
-    button.type='button'; button.onclick=()=>{if(changeDate(date))navigateView('bilan');};td.append(button);row.append(td,el('td',M.dayType(day)==='sport'?'Sport':'Sans séance'));
+    const imported=window.HealthBridge?.sessions(date)||[];
+    button.type='button'; button.onclick=()=>{if(changeDate(date))navigateView('bilan');};td.append(button);row.append(td,el('td',M.dayType(day)==='sport'||imported.length?'Sport':'Sans séance'));
     [day.intake,b.planned,b.actual].forEach(v=>row.append(el('td',v === null ? '—' : fmt(v)+' kcal')));
-    row.append(el('td',weight===null?'—':fmt(weight)+' kg'),el('td',day.steps===null?'—':fmt(day.steps)),el('td',String(day.activities.length)));body.append(row);
+    row.append(el('td',weight===null?'—':fmt(weight)+' kg'),el('td',fmt(window.HealthBridge?.steps(date)??day.steps)),el('td',`${imported.length} importées · ${day.activities.length} saisies`));body.append(row);
   });
 }
 document.addEventListener('input',e=>{if(e.target.form===$('day-form'))markDirty();});

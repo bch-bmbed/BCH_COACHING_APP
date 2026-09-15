@@ -1,8 +1,9 @@
 (function(root){
   'use strict';
+  const S=typeof module!=='undefined'&&module.exports?require('./session-model.js'):root.EquilibreSessions;
   const stamp=s=>typeof s==='string'&&Number.isFinite(Date.parse(s));
   function validateSnapshot(raw){
-    if(!raw||raw.version!==1||!/^\d{4}-\d{2}-\d{2}$/.test(raw.day)||typeof raw.source!=='string'||!raw.source||raw.source.length>200||!stamp(raw.capturedAt)||!stamp(raw.start)||!stamp(raw.end)||!Array.isArray(raw.bins)||raw.bins.length>25)throw Error('Données Santé Connect invalides.');
+    if(!raw||![1,2].includes(raw.version)||!/^\d{4}-\d{2}-\d{2}$/.test(raw.day)||typeof raw.source!=='string'||!raw.source||raw.source.length>200||!stamp(raw.capturedAt)||!stamp(raw.start)||!stamp(raw.end)||!Array.isArray(raw.bins)||raw.bins.length>25)throw Error('Données Santé Connect invalides.');
     try{new Intl.DateTimeFormat('fr-FR',{timeZone:raw.zone}).format();}catch{throw Error('Fuseau Santé Connect invalide.');}
     const start=Date.parse(raw.start),end=Date.parse(raw.end),captured=Date.parse(raw.capturedAt);
     if(end-start<23*3600000||end-start>25*3600000||captured<start)throw Error('Période Santé Connect invalide.');
@@ -14,7 +15,12 @@
       previous=z;return {start:b.start,end:b.end,total:b.total,covered:b.covered,maxRecordSeconds:b.maxRecordSeconds};
     });
     if(raw.steps!==null&&(!Number.isInteger(raw.steps)||raw.steps<0||raw.steps>200000))throw Error('Pas Santé Connect invalides.');
-    return {version:1,day:raw.day,source:raw.source,zone:raw.zone,capturedAt:raw.capturedAt,start:raw.start,end:raw.end,bins,steps:raw.steps};
+    const result={version:raw.version,day:raw.day,source:raw.source,zone:raw.zone,capturedAt:raw.capturedAt,start:raw.start,end:raw.end,bins,steps:raw.steps};
+    if(raw.version===2){
+      if(raw.source!=='health-connect'||!Array.isArray(raw.sources)||raw.sources.length>100||raw.sources.some(s=>typeof s!=='string'||!s||s.length>200)||!Array.isArray(raw.sessions)||raw.sessions.length>500||!raw.permissions||['sessions','activeCalories','steps','total'].some(k=>typeof raw.permissions[k]!=='boolean'))throw Error('Import multisource invalide.');
+      result.sources=[...new Set(raw.sources)].sort();result.permissions=Object.fromEntries(['sessions','activeCalories','steps','total'].map(k=>[k,raw.permissions[k]]));
+      result.sessions=raw.sessions.map(s=>{const clean=S.validate(s);if(Date.parse(s.start)<start||Date.parse(s.start)>=end||Date.parse(s.end)>captured+300000)throw Error('Séance hors période.');return clean;});
+    }return result;
   }
   const total=s=>s.bins.reduce((n,b)=>n+(b.total??0),0);
   const covered=b=>b.total!==null&&b.covered>=((Date.parse(b.end)-Date.parse(b.start))/1000)-1;
@@ -35,6 +41,7 @@
     const filled=s.bins.filter(b=>b.total!==null);
     if(!filled.length)return {...out,reason:'La source ne fournit pas de calories totales pour cette journée.'};
     out.observed=Math.round(total(s));out.through=filled.at(-1).end;
+    if(day.resting&&out.observed<day.resting*(Date.parse(out.through)-Date.parse(s.start))/(Date.parse(s.end)-Date.parse(s.start))*.7)return {...out,reason:'Total reçu trop faible pour inclure le repos : maintien conservé.'};
     if(complete(s)&&date<today)return {...out,expense:out.observed,remaining:0,status:'complete',reason:'Total de la journée complète, repos et activité inclus.'};
     if(date!==today)return {...out,reason:'Journée incomplète : maintien conservé.'};
     if(now-Date.parse(s.capturedAt)>2*3600000||now-Date.parse(out.through)>2*3600000)return {...out,reason:'Données anciennes (plus de 2 h) : maintien conservé.'};
@@ -49,5 +56,11 @@
     const remaining=Math.round(reference*(1-fraction));
     return {...out,remaining,expense:out.observed+remaining,status:'projected',reason:`Reste du jour estimé selon les horaires de ${prior.length} journées complètes. Les séances du journal ne sont pas ajoutées au total.`};
   }
-  const api={validateSnapshot,project,complete,total};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreHealth=api;
+  function automatic(snapshots){
+    const groups=new Map();for(const s of snapshots){if(!groups.has(s.day))groups.set(s.day,[]);groups.get(s.day).push(s);}
+    // Legacy imports cannot safely be added together. Until the companion updates,
+    // choose the best-covered existing total automatically, one per date.
+    return [...groups.values()].map(rows=>rows.filter(s=>s.version===2).sort((a,b)=>Date.parse(b.capturedAt)-Date.parse(a.capturedAt))[0]||rows.sort((a,b)=>Number(complete(b))-Number(complete(a))||b.bins.reduce((n,x)=>n+x.covered,0)-a.bins.reduce((n,x)=>n+x.covered,0)||total(b)-total(a)||a.source.localeCompare(b.source))[0]);
+  }
+  const api={validateSnapshot,project,complete,total,automatic};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreHealth=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
