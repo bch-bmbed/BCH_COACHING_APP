@@ -1,29 +1,41 @@
 'use strict';
 const M = window.Equilibre;
 const $ = id => document.getElementById(id);
-const KEY = 'equilibre-journal-v1';
+const LOCAL_KEY = 'equilibre-journal-v2';
+let KEY = LOCAL_KEY;
 const number = new Intl.NumberFormat('fr-FR', {maximumFractionDigits: 2});
 const fmt = n => n === null ? '—' : number.format(n);
 const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-const ids = {plannedIntake: 'planned-intake', intake: 'intake', base: 'base', target: 'target', total: 'total', weight: 'weight'};
-let data = {version: 1, days: {}}, selected = localDate(), activities = [], dirty = false, locked = false;
+const ids = {plannedIntake: 'planned-intake', base: 'base', target: 'target', total: 'total', weight: 'weight'};
+let data = {version: 2, days: {}}, selected = localDate(), activities = [], dirty = false, locked = false, intakeMode = 'meals', legacyIntake = null, cloudBase = {};
+for (const [key,name] of Object.entries(M.mealNames)) {
+  const card = document.createElement('div'); card.className = 'meal-card';
+  const title=document.createElement('h3');title.textContent=name;
+  const kcalLabel=document.createElement('label');kcalLabel.textContent='Calories consommées · kcal';
+  const input=document.createElement('input');input.id='meal-'+key;input.type='number';input.min='0';input.max='10000';input.step='1';input.placeholder='À renseigner';input.setAttribute('aria-label',name+' : calories');kcalLabel.append(input);
+  const noteLabel=document.createElement('label');noteLabel.textContent='Recettes / aliments';
+  const note=document.createElement('textarea');note.id='meal-note-'+key;note.maxLength=1000;note.rows=2;note.placeholder='Ce que tu as mangé…';note.setAttribute('aria-label',name+' : recettes ou aliments');noteLabel.append(note);
+  card.append(title,kcalLabel,noteLabel);$('meals').append(card);
+}
 function announce(message) { $('status').textContent = message; }
 function storageFailure(message) { $('storage-error').hidden = false; $('storage-error').textContent = message; }
-try { const saved = localStorage.getItem(KEY); if (saved) data = M.validateBackup(JSON.parse(saved)); }
+try { const saved = localStorage.getItem(KEY) || localStorage.getItem('equilibre-journal-v1'); if (saved) data = M.validateBackup(JSON.parse(saved)); }
 catch { locked = true; storageFailure('La sauvegarde locale est inaccessible ou illisible. Aucun écrasement ne sera effectué. Exporte la sauvegarde existante avant de résoudre ce problème.'); }
 $('date').min = '1900-01-01'; $('date').max = '2100-12-31';
 function draft() {
   const day = M.blankDay();
   for (const [key, id] of Object.entries(ids)) day[key] = $(id).value === '' ? null : Number($(id).value);
+  for(const key of Object.keys(M.mealNames))day.meals[key]={kcal:$('meal-'+key).value===''?null:Number($('meal-'+key).value),note:$('meal-note-'+key).value};
+  day.intakeMode=intakeMode;day.intake=intakeMode==='legacy'?legacyIntake:M.mealSummary(day).total;
   day.note = $('note').value; day.activities = structuredClone(activities); return day;
 }
 function save(message = 'Journée enregistrée sur cet appareil.') {
   if (locked) { announce('Sauvegarde bloquée : consulte le message au-dessus du journal.'); return false; }
   if (!$('day-form').reportValidity()) return false;
   try {
-    const next = M.validateBackup({version: 1, days: {...data.days, [selected]: draft()}});
-    localStorage.setItem(KEY, JSON.stringify(next)); data = next; dirty = false;
-    $('save-state').textContent = 'Enregistré sur cet appareil'; announce(message); renderSummary(); renderTrends(); return true;
+    const next = M.validateBackup({version: 2, days: {...data.days, [selected]: draft()}});
+    localStorage.setItem(KEY, JSON.stringify({...next,cloudBase})); data = next; dirty = false;
+    $('save-state').textContent = 'Enregistré sur cet appareil'; announce(message); renderSummary(); renderTrends(); window.dispatchEvent(new Event('journal-saved')); return true;
   } catch (error) { storageFailure('Enregistrement impossible : ' + error.message + ' Tes changements restent affichés.'); return false; }
 }
 function markDirty() { dirty = true; $('save-state').textContent = 'Modifications à enregistrer'; renderSummary(); }
@@ -31,6 +43,8 @@ function showDay(date) {
   selected = date; $('date').value = date;
   const day = data.days[date] || M.blankDay();
   for (const [key, id] of Object.entries(ids)) $(id).value = day[key] ?? '';
+  for(const key of Object.keys(M.mealNames)){$('meal-'+key).value=day.meals[key].kcal??'';$('meal-note-'+key).value=day.meals[key].note;}
+  intakeMode=day.intakeMode;legacyIntake=day.intake;$('legacy-intake').hidden=intakeMode!=='legacy';$('legacy-value').textContent=fmt(legacyIntake);
   $('note').value = day.note; activities = structuredClone(day.activities); dirty = false;
   $('day-label').textContent = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'long',day:'numeric',month:'long'});
   $('save-state').textContent = data.days[date] ? 'Enregistré sur cet appareil' : 'Les champs vides restent inconnus.';
@@ -48,11 +62,13 @@ function metric(id, value) {
 }
 function renderSummary() {
   const day = draft(), b = M.balance(day);
+  const meals=M.mealSummary(day);$('intake').textContent=fmt(day.intake);
+  $('meal-progress').textContent=intakeMode==='legacy'?'L’ancien total reste utilisé. La répartition est facultative.':`${meals.completed}/4 repas renseignés · ${fmt(meals.total)} kcal${meals.completed < 4 ? ' · total provisoire' : ''}. Saisis 0 pour un repas non pris.`;
   metric('intake-value', day.intake); metric('expenditure-value', b.plannedExpense); metric('planned-value', b.planned); metric('actual-value', b.actual);
   $('intake-detail').textContent = day.plannedIntake === null ? 'Apports prévus non renseignés' : `Apports prévus : ${fmt(day.plannedIntake)} kcal`;
   $('expenditure-detail').textContent = b.plannedExpense === null ? 'Base ou calories des séances à compléter' : 'Base + toutes les séances du jour';
   const origin = day.total !== null ? 'Dépense totale saisie' : 'Base + séances réalisées';
-  $('actual-detail').textContent = b.actual === null ? 'Apports ou dépense à compléter' : `${origin}${day.target !== null ? ` · cible : ${fmt(day.target)} kcal` : ''}`;
+  $('actual-detail').textContent = b.actual === null ? 'Apports ou dépense à compléter' : `${origin}${meals.completed !== null && meals.completed < 4 ? ' · repas incomplets' : ''}${day.target !== null ? ` · cible : ${fmt(day.target)} kcal` : ''}`;
 }
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }
 function renderActivities() {
@@ -112,12 +128,13 @@ function renderTrends() {
   });
 }
 $('day-form').addEventListener('input',markDirty);
-$('day-form').addEventListener('submit',e=>{e.preventDefault();save();});
+$('day-form').addEventListener('submit',e=>{e.preventDefault();if(save())window.dispatchEvent(new Event('journal-saved'));});
+$('use-meals').onclick=()=>{intakeMode='meals';$('legacy-intake').hidden=true;markDirty();};
 $('activity-form').addEventListener('submit',e=>{
   e.preventDefault();
   if (!$('activity-name').value.trim()) { $('activity-name').setCustomValidity('Renseigne le nom de l’activité.');$('activity-name').reportValidity();return; }
   const a={id:crypto.randomUUID(),name:$('activity-name').value.trim(),minutes:Number($('activity-minutes').value),kcal:$('activity-kcal').value===''?null:Number($('activity-kcal').value),state:$('activity-state').value,source:$('activity-source').value};
-  activities.push(a);if(save('Activité et journée enregistrées.')){$('activity-form').reset();renderActivities();}else{activities.pop();renderSummary();}
+  activities.push(a);if(save('Activité et journée enregistrées.')){$('activity-form').reset();renderActivities();window.dispatchEvent(new Event('journal-saved'));}else{activities.pop();renderSummary();}
 });
 $('activity-name').addEventListener('input',()=> $('activity-name').setCustomValidity(''));
 $('date').addEventListener('change',()=>changeDate($('date').value));
@@ -127,7 +144,7 @@ window.addEventListener('storage',e=>{if(e.key===KEY || e.key===null){locked=tru
 $('export').onclick=()=>{
   let content;
   if(locked){try{content=localStorage.getItem(KEY);}catch{}if(!content){announce('La sauvegarde locale ne peut pas être lue.');return;}}
-  else{try{if(dirty&&!$('day-form').reportValidity())return;const snapshot=M.validateBackup(dirty?{version:1,days:{...data.days,[selected]:draft()}}:data);content=JSON.stringify({...snapshot,exportedAt:new Date().toISOString()},null,2);}catch(error){announce('Export impossible : '+error.message);return;}}
+  else{try{if(dirty&&!$('day-form').reportValidity())return;const snapshot=M.validateBackup(dirty?{version:2,days:{...data.days,[selected]:draft()}}:data);content=JSON.stringify({...snapshot,exportedAt:new Date().toISOString()},null,2);}catch(error){announce('Export impossible : '+error.message);return;}}
   const url=URL.createObjectURL(new Blob([content],{type:'application/json'})),a=el('a');a.href=url;a.download=`equilibre-${localDate()}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);announce('Sauvegarde exportée. Conserve-la dans un emplacement personnel.');
 };
 $('import').addEventListener('change',async e=>{
@@ -137,9 +154,28 @@ $('import').addEventListener('change',async e=>{
     if(file.size>10000000)throw Error('Fichier trop volumineux (10 Mo maximum).');
     if(dirty&&!save())return;
     const incoming=M.validateBackup(JSON.parse(await file.text()));
-    const result=M.mergeBackup(data,incoming);localStorage.setItem(KEY,JSON.stringify(result.data));data=result.data;showDay(selected);
+    const result=M.mergeBackup(data,incoming);localStorage.setItem(KEY,JSON.stringify({...result.data,cloudBase}));data=result.data;showDay(selected);window.dispatchEvent(new Event('journal-saved'));
     announce(`${result.added} journée(s) importée(s), ${result.skipped} journée(s) déjà présentes conservées.`);
   }catch(error){announce('Import impossible : '+error.message);}finally{e.target.value='';}
 });
 showDay(selected);
 if (data.days[selected]) announce('Ta dernière saisie a été chargée.');
+// Storage boundary shared with cloud.js. Remote updates never replace an unsaved form.
+window.Journal={
+  snapshot:()=>structuredClone(data), base:()=>structuredClone(cloudBase), blocked:()=>locked,
+  hasDraft:()=>dirty,
+  saveDraft:()=>!dirty||save(),
+  localData:()=>M.validateBackup(JSON.parse(localStorage.getItem(LOCAL_KEY)||localStorage.getItem('equilibre-journal-v1')||'{"version":2,"days":{}}')),
+  activate(userId){
+    if(dirty&&!save())return false;
+    KEY=userId?'equilibre-account-'+userId:LOCAL_KEY;locked=false;cloudBase={};$('storage-error').hidden=true;
+    try{const raw=JSON.parse(localStorage.getItem(KEY)||(!userId&&localStorage.getItem('equilibre-journal-v1'))||'{"version":2,"days":{}}');data=M.validateBackup(raw);if(userId && raw.cloudBase)cloudBase=M.validateBackup({version:2,days:raw.cloudBase}).days;}
+    catch{locked=true;data={version:2,days:{}};storageFailure('La copie locale de ce compte est illisible. Exporte-la avant de poursuivre.');}
+    showDay(selected);return !locked;
+  },
+  apply(next,base){
+    if(locked)throw Error('Recharge la page avant de synchroniser.');
+    const clean=M.validateBackup(next);localStorage.setItem(KEY,JSON.stringify({...clean,cloudBase:base}));data=clean;cloudBase=structuredClone(base);
+    if(!dirty)showDay(selected);else renderTrends();
+  }
+};

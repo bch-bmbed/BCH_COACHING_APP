@@ -4,11 +4,11 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#142c3a"><meta name="description" content="Journal personnel des apports, activités, bilans énergétiques et pesées.">
   <title>Équilibre · Mon journal</title>
-  <link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
-  <script defer src="model.js"></script><script defer src="app.js"></script>
+  <link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=2">
+  <script defer src="model.js?v=2"></script><script defer src="sync-model.js?v=2"></script><script defer src="config.js?v=2"></script><script defer src="app.js?v=2"></script><script defer src="cloud.js?v=2"></script>
 </head>
 <body>
-<header><a class="brand" href="#journal"><span class="brand-icon">é.</span> équilibre<span class="brand-sub">MON SUIVI PERSONNEL</span></a><nav aria-label="Navigation principale"><a href="#journal">Journal</a><a href="#tendances">Tendances</a><a href="#sources">Sources & données</a></nav><span class="storage-label">Enregistré sur cet appareil</span></header>
+<header><a class="brand" href="#journal"><span class="brand-icon">é.</span> équilibre<span class="brand-sub">MON SUIVI PERSONNEL</span></a><nav aria-label="Navigation principale"><a href="#journal">Journal</a><a href="#tendances">Tendances</a><a href="#sources">Sources & données</a></nav><a class="storage-label" id="cloud-badge" href="#sync">Sur cet appareil</a></header>
 <main>
   <section id="journal">
     <div class="section-heading"><div><p class="eyebrow">UN JOUR À LA FOIS</p><h1>Mon équilibre quotidien</h1></div><div class="date-control"><button id="previous" aria-label="Jour précédent">←</button><label class="sr-only" for="date">Date du journal</label><input id="date" type="date" required><button id="next" aria-label="Jour suivant">→</button><button id="today">Aujourd’hui</button></div></div>
@@ -22,9 +22,11 @@
     <div class="workspace">
       <form id="day-form" class="panel entry-panel">
         <div class="panel-heading"><h2>Ma journée</h2><span id="day-label" class="muted"></span></div>
+        <fieldset class="meals-section"><legend>Mes quatre repas</legend><div id="meals" class="meals-grid"></div><p id="meal-progress" class="hint">Renseigne les calories et, si tu le souhaites, les recettes mangées.</p></fieldset>
+        <div id="legacy-intake" class="legacy-box" hidden><p>Cette journée contient un ancien total de <strong id="legacy-value"></strong> kcal, sans répartition par repas. Il reste utilisé jusqu’à ce que tu choisisses de le remplacer.</p><button type="button" id="use-meals">Utiliser le total des quatre repas</button></div>
         <div class="fields">
           <label>Apports prévus <span>kcal</span><input id="planned-intake" type="number" min="0" max="30000" step="1" placeholder="À renseigner"></label>
-          <label>Apports consommés <span>kcal</span><input id="intake" type="number" min="0" max="30000" step="1" placeholder="À renseigner"></label>
+          <label>Total consommé <span>kcal · calculé</span><output id="intake" class="total-output">—</output></label>
           <label>Dépense hors séances <span>kcal / jour</span><input id="base" type="number" min="0" max="30000" step="1" placeholder="Ton estimation"></label>
           <label>Déficit cible <span>kcal / jour</span><input id="target" type="number" min="0" max="10000" step="1" placeholder="Facultatif"></label>
         </div>
@@ -52,9 +54,16 @@
     <div class="chart-grid"><article class="panel"><div class="panel-heading"><h3>Bilan énergétique</h3><span class="muted">kcal</span></div><div class="legend"><span><i class="planned-key"></i>Prévu</span><span><i class="actual-key"></i>Estimé</span></div><div id="energy-chart" class="chart"></div><p class="hint">Positif = déficit, négatif = surplus. Une journée incomplète n’est pas comptée comme zéro.</p></article><article class="panel"><div class="panel-heading"><h3>Évolution du poids</h3><span id="weight-average" class="muted">Aucune pesée</span></div><div id="weight-chart" class="chart"></div><p class="hint">Pesées saisies et moyenne des pesées sur les 7 derniers jours. Aucune conversion automatique du déficit en perte de poids.</p></article></div>
     <div class="panel history-panel"><div class="panel-heading"><h3>Historique</h3><span class="muted">30 dernières journées saisies · cliquer pour modifier</span></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Consommé</th><th>Déficit prévu</th><th>Bilan estimé</th><th>Poids</th><th>Séances</th></tr></thead><tbody id="history"></tbody></table></div></div>
   </section>
+  <section id="sync" class="panel sync-panel">
+    <div class="panel-heading"><h2>Mon compte · PC & téléphone</h2><span id="sync-state" class="pill" role="status">Stockage local</span></div>
+    <p id="sync-message">La connexion privée sera disponible une fois le projet Supabase relié. Tu peux déjà saisir tes repas sur cet appareil.</p>
+    <form id="login-form" hidden><label for="email">Mon adresse e-mail</label><div class="login-row"><input id="email" type="email" autocomplete="email" placeholder="toi@exemple.fr" required><button type="submit" class="primary">Recevoir mon lien de connexion</button></div><p class="hint">Utilise la même adresse sur le PC et le téléphone. Ouvre le lien reçu sur l’appareil que tu souhaites connecter.</p></form>
+    <div id="account-actions" hidden><p id="account-email" class="muted"></p><div class="sync-buttons"><button id="sync-now" class="primary">Synchroniser maintenant</button><button id="copy-local" class="secondary" hidden>Transférer mes journées locales vers mon compte</button><button id="logout">Se déconnecter sur cet appareil</button></div></div>
+    <div id="conflicts" class="conflicts" hidden><h3>Modifications à départager</h3><p>Le même champ a changé sur deux appareils. Choisis les valeurs à conserver ; les autres champs seront réunis automatiquement.</p><div id="conflict-items"></div></div>
+  </section>
   <section id="sources"><div class="section-heading"><div><p class="eyebrow">UN SUIVI QUI PEUT ÉVOLUER</p><h2>Sources & données</h2></div><span class="pill">Connexions automatiques à configurer</span></div>
     <div class="source-grid"><article class="panel"><h3>Google Fit / Android</h3><p>Les API Google Fit arrivent en fin de support fin 2026. Health Connect est une piste pour regrouper les données sur Android, avec une passerelle mobile.</p><a href="https://developer.android.com/health-and-fitness/health-connect/migration/fit" target="_blank" rel="noreferrer">Migration Google ↗</a></article><article class="panel"><h3>Garmin Connect</h3><p>La connexion directe officielle nécessite un accès professionnel approuvé. Le partage vers Health Connect peut être une alternative sur Android.</p><a href="https://developer.garmin.com/gc-developer-program/program-faq/" target="_blank" rel="noreferrer">Conditions Garmin ↗</a></article><article class="panel"><h3>Urevo & futurs appareils</h3><p>Urevo annonce un partage avec Google Fit et Apple Health. Le parcours exact dépend de ton téléphone et de l’application. Aucun compte n’est connecté ici.</p><a href="https://www.urevo.us/pages/urevo-app" target="_blank" rel="noreferrer">Compatibilités Urevo ↗</a></article></div>
-    <div class="panel backup"><div><h3>Mes données restent avec moi</h3><p>Cette version sauvegarde uniquement dans ce navigateur. Exporte une sauvegarde pour changer d’appareil ou avant d’effacer les données du navigateur.</p><p class="hint">L’import accepte les sauvegardes JSON de ce dashboard et ajoute uniquement les dates absentes. Les exports Garmin et Urevo ne sont pas encore pris en charge.</p></div><div class="backup-actions"><button id="export" class="secondary">Exporter une sauvegarde</button><label class="file-button">Importer une sauvegarde<input id="import" type="file" accept=".json,application/json"></label></div></div>
+    <div class="panel backup"><div><h3>Mes données restent avec moi</h3><p>Sans connexion, tes saisies restent dans ce navigateur. Avec ton compte, elles se synchronisent vers ton espace privé Supabase après enregistrement. L’export reste disponible pour conserver une copie personnelle.</p><p class="hint">L’import accepte les sauvegardes de ce dashboard, y compris l’ancienne version. Les dates déjà présentes sont conservées. Les exports Garmin et Urevo ne sont pas encore pris en charge.</p></div><div class="backup-actions"><button id="export" class="secondary">Exporter une sauvegarde</button><label class="file-button">Importer une sauvegarde<input id="import" type="file" accept=".json,application/json"></label></div></div>
   </section>
-</main><footer>Équilibre · Version locale 1 <span>Les dépenses et les bilans sont des estimations.</span></footer>
+</main><footer>Équilibre · Version 2 <span>Les dépenses et les bilans sont des estimations.</span></footer>
 </body></html>

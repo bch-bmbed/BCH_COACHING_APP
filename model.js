@@ -2,20 +2,22 @@
   'use strict';
   const sources = {manual: 'Manuelle', garmin: 'Garmin Connect', urevo: 'Urevo', 'google-fit': 'Google Fit', other: 'Autre appareil'};
   const fields = {plannedIntake: 30000, intake: 30000, base: 30000, target: 10000, total: 30000, weight: 600};
+  const mealNames = {breakfast: 'Petit déjeuner', lunch: 'Déjeuner', snack: 'Goûter', dinner: 'Dîner'};
+  const blankMeals = () => Object.fromEntries(Object.keys(mealNames).map(key => [key, {kcal: null, note: ''}]));
   function validDate(s) {
     if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s) || s < '1900-01-01' || s > '2100-12-31') return false;
     const d = new Date(s + 'T12:00:00Z');
     return !Number.isNaN(+d) && d.toISOString().slice(0, 10) === s;
   }
   function blankDay() {
-    return {plannedIntake: null, intake: null, base: null, target: null, total: null, weight: null, note: '', activities: []};
+    return {plannedIntake: null, intake: null, base: null, target: null, total: null, weight: null, note: '', activities: [], meals: blankMeals(), intakeMode: 'meals'};
   }
   function optionalNumber(value, max, min = 0) {
     return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max);
   }
   function validateBackup(raw) {
-    if (!raw || raw.version !== 1 || !raw.days || typeof raw.days !== 'object' || Array.isArray(raw.days) || Object.keys(raw.days).length > 20000) throw Error('Format de sauvegarde non reconnu.');
-    const result = {version: 1, days: {}};
+    if (!raw || ![1, 2].includes(raw.version) || !raw.days || typeof raw.days !== 'object' || Array.isArray(raw.days) || Object.keys(raw.days).length > 20000) throw Error('Format de sauvegarde non reconnu.');
+    const result = {version: 2, days: {}};
     for (const [date, day] of Object.entries(raw.days)) {
       if (!validDate(date) || !day || typeof day !== 'object') throw Error('Date ou journée invalide.');
       const clean = blankDay();
@@ -23,6 +25,18 @@
         if (!optionalNumber(day[key], max, key === 'weight' ? 1 : 0)) throw Error('Valeur invalide pour ' + date + ' : ' + key);
         clean[key] = day[key];
       }
+      if (raw.version === 1 && !day.meals) clean.intakeMode = 'legacy';
+      else {
+        if (!['meals', 'legacy'].includes(day.intakeMode) || !day.meals || typeof day.meals !== 'object') throw Error('Repas invalides.');
+        clean.intakeMode = day.intakeMode;
+        for (const key of Object.keys(mealNames)) {
+          const meal = day.meals[key];
+          if (!meal || !optionalNumber(meal.kcal, 10000) || typeof meal.note !== 'string' || meal.note.length > 1000) throw Error('Repas invalide : ' + mealNames[key]);
+          clean.meals[key] = {kcal: meal.kcal, note: meal.note};
+        }
+      }
+      if (clean.intakeMode === 'meals') clean.intake = mealSummary(clean).total;
+      if (clean.intake !== null && clean.intake > 30000) throw Error('Le total des repas dépasse 30 000 kcal.');
       if (typeof day.note !== 'string' || day.note.length > 1000 || !Array.isArray(day.activities) || day.activities.length > 200) throw Error('Note ou activités invalides.');
       clean.note = day.note;
       const ids = new Set();
@@ -35,6 +49,11 @@
     }
     return result;
   }
+  function mealSummary(day) {
+    if (day.intakeMode !== 'meals') return {total: day.intake, completed: null};
+    const values = Object.values(day.meals).map(m => m.kcal).filter(v => v !== null);
+    return {total: values.length ? values.reduce((a,b) => a+b, 0) : null, completed: values.length};
+  }
   function sumCalories(activities) {
     return activities.some(a => a.kcal === null) ? null : activities.reduce((sum, a) => sum + a.kcal, 0);
   }
@@ -43,7 +62,8 @@
     const doneSport = sumCalories(day.activities.filter(a => a.state === 'done'));
     const plannedExpense = day.base === null || plannedSport === null ? null : day.base + plannedSport;
     const actualExpense = day.total !== null ? day.total : day.base === null || doneSport === null ? null : day.base + doneSport;
-    return {plannedExpense, actualExpense, planned: plannedExpense === null || day.plannedIntake === null ? null : plannedExpense - day.plannedIntake, actual: actualExpense === null || day.intake === null ? null : actualExpense - day.intake};
+    const intake = day.intakeMode === 'meals' ? mealSummary(day).total : day.intake;
+    return {plannedExpense, actualExpense, planned: plannedExpense === null || day.plannedIntake === null ? null : plannedExpense - day.plannedIntake, actual: actualExpense === null || intake === null ? null : actualExpense - intake};
   }
   function shiftDate(date, delta) {
     const d = new Date(date + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10);
@@ -57,7 +77,7 @@
     }
     return {data: merged, added, skipped};
   }
-  const api = {sources, blankDay, validDate, validateBackup, balance, shiftDate, mergeBackup};
+  const api = {sources, mealNames, blankMeals, mealSummary, blankDay, validDate, validateBackup, balance, shiftDate, mergeBackup};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Equilibre = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

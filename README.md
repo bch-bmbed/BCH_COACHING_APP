@@ -1,10 +1,11 @@
 # Équilibre — dashboard personnel
 
-Première version statique, sans dépendance ni compte requis, compatible avec GitHub Pages. Ouvrir `index.html` dans un navigateur, ou servir ce dossier avec un serveur HTTP local. Aucun chiffre de démonstration n'est enregistré.
+Dashboard statique sur GitHub Pages, avec journal local et synchronisation privée Supabase. Aucun chiffre de démonstration n'est enregistré. Le SDK Supabase officiel 2.116.0 est conservé localement dans `vendor/` ; aucun chargement de script depuis un CDN.
 
 ## Disponible
 
 - Journal daté : apports prévus et consommés, dépense hors séances, déficit cible facultatif, total de la montre, poids et note.
+- Quatre repas : petit déjeuner, déjeuner, goûter, dîner. Calories et note de recettes/aliments par repas. La somme est automatique ; les repas non renseignés rendent le total provisoire. Saisir 0 pour un repas non pris. Les notes ne sont pas analysées automatiquement pour calculer les calories.
 - Activités prévues ou réalisées, durée, calories actives et provenance déclarée. La provenance n'est pas une connexion automatique.
 - Calculs immédiats, historique modifiable, graphiques sur 14 jours et moyenne des pesées des 7 derniers jours.
 - Sauvegarde locale au clic sur Enregistrer, lors d'un changement de date et des modifications d'activités. Export et import JSON. Les conflits d'import conservent la journée déjà présente.
@@ -21,7 +22,11 @@ Les valeurs d'une journée ne modifient pas les journées précédentes. La pré
 
 ## Données et limites
 
-Les données restent dans `localStorage`, sur ce navigateur et cette origine web. Un autre téléphone, navigateur, une navigation privée ou une autre URL ne partagent pas la sauvegarde. Le passage du fichier local au site GitHub nécessite un export puis un import. Il n'y a ni authentification, ni stockage serveur, ni chiffrement applicatif. Les sauvegardes JSON contiennent des informations personnelles : ne pas les ajouter au dépôt public.
+Sans connexion, les données restent dans `localStorage`. Avec le même compte Supabase sur deux appareils, elles sont sauvegardées dans la table privée `journal_days` et gardées en copie locale propre au compte. Les données ne sont pas chiffrées de bout en bout : HTTPS protège le transport et les règles de base de données limitent l'accès au propriétaire. Les sauvegardes JSON sont personnelles et ne doivent pas être publiées.
+
+La migration v1 → v2 conserve les anciens totaux sans inventer leur répartition. L'ancien stockage local reste intact. Le bouton « Utiliser le total des quatre repas » remplace explicitement l'ancien total pour une journée. Après connexion, utiliser « Transférer mes journées locales vers mon compte » sur chaque appareil possédant des saisies antérieures. Les valeurs différentes d'un même champ sont à départager, les autres champs sont réunis.
+
+La synchronisation intervient après Enregistrer, au retour sur l'onglet, au retour du réseau et toutes les 30 secondes pendant que la page est visible. Une saisie non enregistrée reste à l'écran et suspend la mise à jour. En cas de coupure, la copie locale est conservée. Une fusion à trois versions réunit les repas et activités indépendants ; un conflit sur le même champ exige un choix. La révision serveur est vérifiée de façon atomique pour éviter un écrasement entre lecture et écriture. Les activités sont identifiées individuellement, y compris lors d'une suppression.
 
 Les données illisibles sont protégées contre l'écrasement. L'ouverture simultanée dans plusieurs onglets exige un rechargement si un autre onglet écrit. Les sauvegardes ont une version de schéma ; les futurs connecteurs pourront être adaptés à ce modèle. Les exports natifs Garmin, Google et Urevo ne sont pas acceptés actuellement.
 
@@ -35,7 +40,18 @@ Ne jamais publier les sauvegardes personnelles. Le fichier `.gitignore` exclut l
 
 Documentation : https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages
 
-## Suite prévue : synchronisation Android
+## Configuration de la synchronisation PC / téléphone
+
+Projet Supabase : `yuzvnyecrtcvzmxnlhfd`, région Paris (`eu-west-3`). Le fichier `config.js` contient exclusivement l'URL et la clé publique, jamais de clé `service_role` ou secrète.
+
+1. Appliquer `supabase/migrations/001_journal.sql` une fois. La table possède RLS, aucun accès anonyme, et une fonction de sauvegarde vérifiant la révision.
+2. Dans **Authentication → URL Configuration**, définir **Site URL** sur `https://bch-bmbed.github.io/BCH_COACHING_APP/` et autoriser exactement cette même URL dans **Redirect URLs**.
+3. Authentification par lien e-mail. Le service e-mail par défaut de Supabase n'envoie qu'aux adresses autorisées de l'équipe du projet ; pour ce suivi personnel, utiliser l'adresse du compte Supabase propriétaire. Pour d'autres adresses, configurer un SMTP adapté avant d'ouvrir l'accès. Aucun SMTP payant n'est prévu ici.
+4. Ouvrir le dashboard, demander un lien puis l'ouvrir sur le même appareil. Répéter sur le deuxième appareil avec la même adresse. Les comptes de la plateforme Supabase et les utilisateurs de l'application sont distincts : le premier lien crée l'utilisateur du journal.
+
+L'offre gratuite était annoncée à 0 $/mois lors de la création. Elle peut être mise en pause après une période d'inactivité ; les copies locales et exports restent disponibles. Voir https://supabase.com/pricing et https://supabase.com/docs/guides/auth/auth-smtp.
+
+## Suite prévue : import automatique des plateformes sportives
 
 Architecture cible : applications et montre → Health Connect sur Android → passerelle Android autorisée par l'utilisateur → API privée et base de données → dashboard GitHub Pages.
 
@@ -43,7 +59,7 @@ Si Garmin et Urevo sont déjà regroupés dans Google Fit, conserver ces connexi
 
 Guide officiel : https://support.google.com/fit/answer/12830119?hl=fr
 
-Health Connect utilise le SDK Android et stocke les données sur le téléphone. Une page HTML seule ne peut pas le lire. Une passerelle (application Android dédiée ou outil d'export compatible à choisir) reste donc nécessaire, même avec un serveur. Le stockage distant exigera une authentification individuelle, des autorisations par utilisateur et des secrets conservés côté serveur. Le choix de l'hébergement gratuit et de ses quotas reste à vérifier avant déploiement.
+Health Connect utilise le SDK Android et stocke les données sur le téléphone. Une page HTML seule ne peut pas le lire. Une passerelle (application Android dédiée ou outil d'export compatible à choisir) reste donc nécessaire, même avec le stockage Supabase déjà préparé.
 
 - **Google Fit** : le guide actuel annonce un support des API jusqu'à fin 2026. Ne pas démarrer une nouvelle intégration sur cette API. Health Connect convient à l'agrégation Android ; Google Health API concerne les appareils Google/Fitbit et ne remplace pas un agrégateur universel.
 - **Garmin Connect** : API directe réservée aux usages professionnels approuvés. Garmin documente le partage vers Health Connect ; vérifier les catégories effectivement partagées et l'historique sur le téléphone.
@@ -61,4 +77,6 @@ Sources officielles consultées le 15 septembre 2026 :
 
 ## Vérification
 
-Exécuter `node --test tests/model.test.cjs` pour vérifier les calculs, les dates, les valeurs manquantes, l'absence de double comptage et la fusion des sauvegardes.
+Exécuter `node --test tests/*.test.cjs` : 21 tests de calculs, migration, fusion, deux clients simulés, conflits de révision et coupure réseau. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
+
+Exécuter `supabase/tests/access-and-revisions.sql` sur le projet pour vérifier les accès autorisés/interdits et les révisions. Le script utilise une transaction annulée : aucune donnée fictive ne reste en base. Ce test a été exécuté avec succès sur le projet, et les contrôles de sécurité Supabase n'ont remonté aucun avertissement.
