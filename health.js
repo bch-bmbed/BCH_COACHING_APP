@@ -44,7 +44,7 @@
     if(p.status==='reference'&&day.adaptive&&day.includedActivity!=null&&day.maintenance!=null){
       const a=window.EquilibreBalance.activities(day,S.dedupe(s?.sessions||[]),window.Journal?.profile().resting,{available:s?.permissions?.sessions===true});
       const e=window.EquilibreBalance.expenditure(day,a,p);
-      return {...p,expense:e.expense,status:'activity',reason:`${p.reason} Estimation utilisée : maintien + activité au-delà des ${fmt(e.included)} kcal déjà incluses. Les calories non disponibles ne sont pas inventées.`};
+      return {...p,expense:e.expense,status:'activity',reason:`${p.reason} Estimation utilisée : maintien + activité au-delà des ${fmt(e.included)} kcal supposées incluses. Les calories non disponibles ne sont pas inventées.`};
     }return p;
   }
   const sessionsOn=date=>S.dedupe(combined.find(s=>s.day===date)?.sessions||[]);
@@ -73,16 +73,18 @@
       if(s.kind==='walking'&&s.sources.some(S.isUnclassifiedSource)){
         const reference=node('div');reference.className='walking-reference';
         reference.append(node('strong','Repère théorique de calories actives'));
-        const r=S.walkingReference(minutes,knownWeight?.weight,resting);
+        const r=S.walkingReference(s,knownWeight?.weight,resting);
         if(r){
-          reference.append(node('p',`≈ ${fmt(r.activeLow)}–${fmt(r.activeHigh)} kcal pour ${fmtEnergy(minutes)} min, si la marche est à 4 km/h, à plat.`));
-          reference.append(node('small',`Poids : ${fmtEnergy(r.weight)} kg (pesée du ${knownWeight.date.split('-').reverse().join('/')}). ${motion?'La vitesse est affichée ci-dessus ; ce repère reste le scénario à 4 km/h, à plat.':'Allure supposée à 4 km/h.'} La pente n’est pas transmise.`));
+          reference.append(node('p',`≈ ${fmt(r.activeKcal)} kcal actives pour ${fmtEnergy(r.minutes)} min à ${fmtEnergy(r.speed)} km/h, sous l’hypothèse d’un tapis à plat.`));
+          reference.append(node('small',r.basis==='distance'?`Calcul fondé sur ${fmtKm(r.distanceMeters)} km ÷ (${fmtEnergy(r.minutes)} min / 60), reçus de ${sourceLabel(r.source)}. La durée inclut les pauses.`:`Calcul fondé sur les ${r.samples} mesure(s) de vitesse de ${sourceLabel(r.source)}. Estimation sous réserve que ces points représentent toute la séance ; leur couverture n’est pas connue.`));
+          reference.append(node('small',`Poids : ${fmtEnergy(r.weight)} kg (pesée du ${knownWeight.date.split('-').reverse().join('/')}). Inclinaison supposée à 0 % : la pente n’est pas transmise. Comparaison indicative ; les calories source restent inchangées.`));
           const calculation=node('details');calculation.append(node('summary','Comprendre le calcul'));
-          calculation.append(node('p',`Dépense totale théorique : (3 à 3,5) × ${fmtEnergy(r.weight)} kg × (${fmtEnergy(minutes)} min / 60) ≈ ${fmt(r.grossLow)}–${fmt(r.grossHigh)} kcal.`));
-          calculation.append(node('p',`Repos estimé : ${fmt(resting)} kcal/j × ${fmtEnergy(minutes)} / 1 440 ≈ ${fmt(r.restKcal)} kcal. Repère actif = total théorique − repos.`));
-          calculation.append(node('p','Les facteurs d’intensité de 3 à 3,5 MET correspondent à cette allure sur sol ferme ou sur tapis. Cette plage compare deux repères moyens ; elle ne mesure pas ta dépense et ne permet pas de confirmer la méthode Urevo.'));
+          calculation.append(node('p',`Intensité de référence : ${fmtEnergy(r.met)} MET (facteur d’intensité), pour une marche sur tapis entre ${fmtEnergy(r.speedBand[0])} et ${fmtEnergy(r.speedBand[1])} km/h à plat. L’allure est arrondie au dixième pour choisir la tranche.`));
+          calculation.append(node('p',`Dépense totale théorique : ${fmtEnergy(r.met)} × ${fmtEnergy(r.weight)} kg × (${fmtEnergy(r.minutes)} min / 60) ≈ ${fmt(r.grossKcal)} kcal.`));
+          calculation.append(node('p',`Repos estimé : ${fmt(resting)} kcal/j × ${fmtEnergy(r.minutes)} / 1 440 ≈ ${fmt(r.restKcal)} kcal. Repère actif = ${fmt(r.grossKcal)} − ${fmt(r.restKcal)} ≈ ${fmt(r.activeKcal)} kcal.`));
+          calculation.append(node('p','Ce repère moyen varie par tranche de vitesse. Il ne mesure pas ta dépense personnelle ; les pauses, variations d’allure et la pente peuvent modifier le résultat. Il ne confirme pas la méthode Urevo.'));
           const link=node('a','Références : Compendium des activités physiques');link.href='https://pacompendium.com/walking/';calculation.append(link);reference.append(calculation);
-        } else reference.append(node('p','Renseigne une pesée à cette date ou avant, et le métabolisme de base dans Compte, pour afficher la comparaison à 4 km/h, à plat.'));
+        } else reference.append(node('p',!knownWeight||!resting?'Renseigne une pesée à cette date ou avant, et le métabolisme de base dans Compte, pour afficher la comparaison.':!motion?'En attente d’une distance complète ou de mesures de vitesse pour calculer le repère de cette séance.':'Comparaison indisponible pour cette allure : les références utilisées couvrent la marche sur tapis de 1,9 à 8,9 km/h.'));
         card.append(reference);
       }
       if(s.ambiguous)card.append(node('p','Chevauchement à vérifier : type ou enregistrements différents, séances conservées séparément.'));

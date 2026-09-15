@@ -73,11 +73,19 @@
       if(matches.length)result.set(key(s),[...new Set(matches.flatMap(m=>m.sources||[m.source]))]);
     }return result;
   }
-  function walkingReference(minutes,weight,resting){
-    if(!Number.isFinite(minutes)||minutes<=0||!Number.isFinite(weight)||weight<=0||!Number.isFinite(resting)||resting<=0)return null;
-    // Comparison scenario only: 4 km/h, 0% incline. 2024 Compendium: level ground / treadmill.
-    const grossLow=3*weight*minutes/60,grossHigh=3.5*weight*minutes/60,restKcal=resting*minutes/1440;
-    return {minutes,weight,resting,speed:4,incline:0,grossLow,grossHigh,restKcal,activeLow:Math.max(0,grossLow-restKcal),activeHigh:Math.max(0,grossHigh-restKcal)};
+  function walkingReference(session,weight,resting){
+    if(!session||session.kind!=='walking'||!Number.isFinite(weight)||weight<=0||!Number.isFinite(resting)||resting<=0)return null;
+    const m=motion(session);if(!m||!Number.isFinite(m.minutes)||m.minutes<=0)return null;
+    // Full-session distance takes precedence over an unweighted mean of sparse speed samples.
+    // Always keep the distance and duration from the same source record.
+    const speed=m.distanceMeters!==null?m.distanceMeters/1000/(m.minutes/60):m.speedKmh;
+    if(!Number.isFinite(speed)||speed<1.9||speed>8.9)return null;
+    // 2024 Adult Compendium, treadmill at 0% grade (codes 17346–17367).
+    // Speeds are classified to 0.1 km/h, matching the published bands; no extrapolation.
+    const roundedSpeed=Math.round(speed*10)/10;
+    const [low,high,met]=[[1.9,3.1,2.8],[3.2,3.9,3],[4,4.7,3.5],[4.8,5.5,3.8],[5.6,6.3,4.8],[6.4,7.1,5.8],[7.2,7.9,6.8],[8,8.9,8.3]].find(([low,high])=>roundedSpeed>=low&&roundedSpeed<=high);
+    const grossKcal=met*weight*m.minutes/60,restKcal=resting*m.minutes/1440;
+    return {minutes:m.minutes,weight,resting,speed,incline:0,met,speedBand:[low,high],source:m.source,basis:m.distanceMeters!==null?'distance':'samples',samples:m.samples,distanceMeters:m.distanceMeters,grossKcal,restKcal,activeKcal:Math.max(0,grossKcal-restKcal)};
   }
   const api={validate,dedupe,labels,energy,energySummary,isUnclassifiedSource,walkingReference,motion,excludedEnergy,key};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreSessions=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

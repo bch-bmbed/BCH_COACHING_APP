@@ -17,11 +17,13 @@
     $('balance-active-bar').style.width=(hasEnvelope?Math.min(a.kcal??0,e.included)/scale*100:(p.activityRatio??0)*100)+'%';
     $('balance-extra-bar').style.width=(hasEnvelope?(e.excess??0)/scale*100:0)+'%';
     $('balance-active-track').classList.toggle('no-value',a.kcal===null);
-    $('balance-active-share').textContent=hasEnvelope?`${fmt(e.included)} kcal déjà incluses · ${e.excess===null?'supplément inconnu':signed(e.excess)+' kcal en plus'}`:p.inconsistent?'Total de dépense à vérifier':p.activityRatio===null?'Part dans la dépense : à compléter':`≈ ${fmt(p.activityRatio*100)} % de la dépense retenue`;
+    $('balance-active-share').textContent=hasEnvelope?`${fmt(e.included)} kcal supposées incluses · ${e.excess===null?'supplément inconnu':signed(e.excess)+' kcal en plus'}`:p.inconsistent?'Total de dépense à vérifier':p.activityRatio===null?'Part dans la dépense : à compléter':`≈ ${fmt(p.activityRatio*100)} % de la dépense retenue`;
     $('balance-active-detail').textContent=a.source==='none'?'En attente de données d’activité':a.source==='manual'?'Activités réalisées et marche renseignées':`${a.count} séance(s) retenue(s)${a.excludedCount?' · '+a.excludedCount+' plage Google Fit non ajoutée':''}${a.missing?' · '+a.missing+' sans calories':''}`;
     $('balance-expense-breakdown').hidden=e.maintenance===null;
     $('balance-maintenance').textContent=fmt(e.maintenance)+' kcal';
     $('balance-included').textContent=e.included===null?'À renseigner':fmt(e.included)+' kcal';
+    $('balance-envelope-note').hidden=e.method!=='activity';
+    $('balance-envelope-note').textContent='Activité incluse : hypothèse à calibrer avec le maintien et les tendances de poids. Le maintien reste inchangé sous ce seuil. Ce repère est distinct du déficit cible.';
     $('balance-adjustment-label').textContent=['manual','projected','complete'].includes(e.method)?'Ajustement du total':'Supplément d’activité';
     const approximate=e.method==='activity'&&e.provisional?'≈ ':'';
     $('balance-adjustment').textContent=approximate+signed(e.adjustment)+' kcal';
