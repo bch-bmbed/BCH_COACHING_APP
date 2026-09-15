@@ -27,3 +27,7 @@ test('rejouer une synchronisation ne crée pas de doublons',()=>{
   const base=M.blankDay(),pc=structuredClone(base);pc.meals.breakfast.kcal=400;
   const once=S.mergeDay(base,pc,base).day;assert.deepEqual(S.mergeDay(base,pc,once),{day:once,conflicts:[]});
 });
+test('les pas et les calories de marche saisis sur deux appareils sont fusionnés par champ',()=>{
+  const base=M.blankDay(),pc=structuredClone(base),phone=structuredClone(base);pc.steps=8200;phone.walkingKcal=210;
+  const result=S.mergeDay(base,pc,phone);assert.equal(result.conflicts.length,0);assert.equal(result.day.steps,8200);assert.equal(result.day.walkingKcal,210);
+});

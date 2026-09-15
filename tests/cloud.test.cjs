@@ -29,6 +29,12 @@ test('deux appareils partagent les repas et les activités sans écrasement',asy
   pc.edit(d=>d.meals.dinner.kcal=700);await pc.sync();await phone.sync();await pc.sync();
   assert.equal(pc.snapshot().days[date].intake,1350);assert.equal(phone.snapshot().days[date].activities.length,1);assert.deepEqual(pc.snapshot(),phone.snapshot());assert.equal(pc.status(),'Synchronisé');
 });
+test('les pas et les calories de marche se synchronisent sans créer de séance',async()=>{
+  const server={rows:new Map()},pc=await device(server),phone=await device(server);
+  pc.edit(d=>d.steps=9100);phone.edit(d=>d.walkingKcal=240);
+  await pc.sync();await phone.sync();await pc.sync();
+  assert.equal(pc.snapshot().days[date].steps,9100);assert.equal(phone.snapshot().days[date].walkingKcal,240);assert.equal(pc.snapshot().days[date].activities.length,0);assert.deepEqual(pc.snapshot(),phone.snapshot());
+});
 test('une modification de version entre lecture et écriture est fusionnée',async()=>{
   const server={rows:new Map()},pc=await device(server);pc.edit(d=>d.meals.lunch.kcal=650);
   server.beforeWrite=async()=>{server.beforeWrite=null;const d=M.blankDay();d.meals.breakfast.kcal=400;d.intake=400;server.rows.set(date,{revision:1,payload:d});};

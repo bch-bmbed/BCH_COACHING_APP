@@ -12,6 +12,8 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.HealthConnectFeatures
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.lifecycleScope
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.work.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -31,6 +33,10 @@ class MainActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState);vault=Vault(this)
         val scroll=ScrollView(this);content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(32,42,32,36) };scroll.addView(content);setContentView(scroll)
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view,insets ->
+            val bars=insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left,bars.top,bars.right,bars.bottom);insets
+        }
         text("Équilibre Connect",28f)
         text("Tes dépenses, au fil de la journée",20f)
         text("Cette passerelle lit tes calories totales et tes pas dans Santé Connect, puis les transmet à ton compte Équilibre. Elle ne lit ni tes repas, ni tes données médicales. Aucun accès en écriture à Santé Connect.")
@@ -38,7 +44,7 @@ class MainActivity: ComponentActivity() {
         text("1. Associer mon compte",20f)
         text("Dans le dashboard → Compte → Santé Connect, crée un code d’association puis colle-le ici. Ce code reste privé.")
         val code=EditText(this).apply { hint="Code EQ1…";inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD;setSingleLine(false);content.addView(this) }
-        button("Enregistrer le code") { try{vault.setCode(code.text.toString().trim());code.setText("");status.text="Téléphone associé. Autorise ensuite Santé Connect."}catch(e: Exception){status.text=e.message} }
+        button("Enregistrer le code") { try{vault.setCode(code.text.toString().trim());code.setText("");status.text="Code enregistré. Autorise Santé Connect puis synchronise pour vérifier l’association."}catch(e: Exception){status.text=e.message} }
         text("2. Autoriser Santé Connect",20f)
         button("Autoriser les calories et les pas") {
             when(HealthConnectClient.getSdkStatus(this)) {

@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),M=require('
 const goals=(base=2200)=>({plannedIntake:1800,base,target:400});
 test('les objectifs s’appliquent chaque jour à partir de leur date, sans recalculer le passé',()=>{
   const p={goals:{'2026-09-10':goals(),'2026-09-15':goals(2400)},weights:{}};
-  for(const [date,expected] of [['2026-09-09',null],['2026-09-14',400],['2026-09-15',600],['2026-10-01',600]]){
+  for(const [date,expected] of [['2026-09-09',null],['2026-09-14',400],['2026-09-15',400],['2026-10-01',400]]){
     assert.equal(M.balance(M.effectiveDay(undefined,p,date)).planned,expected);
   }
 });
@@ -33,7 +33,7 @@ test('deux champs du profil modifiés le même jour sont réunis',()=>{
   const base={goals:{'2026-09-10':goals()},weights:{}},local=structuredClone(base),remote=structuredClone(base);
   local.goals['2026-09-15']={...goals(),plannedIntake:1900};remote.goals['2026-09-15']={...goals(),base:2400};remote.weights['2026-09-15']=79;
   const merged=S.mergeProfile(base,local,remote);
-  assert.equal(merged.conflicts.length,0);assert.deepEqual(M.goalsAt(merged.profile,'2026-09-15'),{plannedIntake:1900,base:2400,target:400,maintenance:null});
+  assert.equal(merged.conflicts.length,0);assert.deepEqual(M.goalsAt(merged.profile,'2026-09-15'),{plannedIntake:1900,base:2400,target:400,maintenance:null,adaptive:false});
   assert.equal(merged.profile.weights['2026-09-15'],79);
 });
 test('des objectifs prenant effet à des dates différentes gardent leur chronologie',()=>{

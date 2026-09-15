@@ -118,6 +118,7 @@
     generation++;pending.clear();paintConflicts();
     if(!J.activate(user?.id)){status('Action nécessaire','Enregistre ou exporte tes modifications avant de changer de compte.');return;}
     account=user;$('login-form').hidden=!!user;$('account-actions').hidden=!user;
+    window.HealthBridge?.activate(client,user);
     $('account-email').textContent=user?.email||'';
     if(user){const local=J.localData(),count=Object.keys(local.days).length+Object.keys(local.profile.goals).length+Object.keys(local.profile.weights).length+Number(local.profile.resting!==null);$('copy-local').hidden=!count;status('Connecté','Ton journal privé va être récupéré.');schedule();}
     else status('Sur cet appareil','Tu es déconnecté. Les journées locales restent disponibles ; les données du compte sont masquées.');

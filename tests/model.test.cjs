@@ -33,14 +33,14 @@ test('fusion des sauvegardes sans écraser les dates existantes et import idempo
   assert.equal(M.mergeBackup(result.data,b).added,0);
 });
 test('sauvegardes malformées, versions inconnues et identifiants dupliqués refusés', () => {
-  assert.throws(()=>M.validateBackup({version:4,days:{}}));
+  assert.throws(()=>M.validateBackup({version:5,days:{}}));
   for(const value of [-1,Infinity,'2000']) assert.throws(()=>M.validateBackup({version:1,days:{'2026-09-15':{...M.blankDay(),intake:value}}}));
   assert.throws(()=>M.validateBackup({version:1,days:{'2026-09-15':{...M.blankDay(),activities:[activity(20),activity(30)]}}}));
 });
 test('migration v1 conserve le total sans inventer une répartition',()=>{
   const d={...legacy(),intake:1850};delete d.meals;delete d.intakeMode;
   const migrated=M.validateBackup({version:1,days:{'2026-09-15':d}});
-  assert.equal(migrated.version,3);assert.equal(migrated.days['2026-09-15'].intake,1850);assert.equal(migrated.days['2026-09-15'].intakeMode,'legacy');
+  assert.equal(migrated.version,4);assert.equal(migrated.days['2026-09-15'].intake,1850);assert.equal(migrated.days['2026-09-15'].intakeMode,'legacy');
 });
 test('somme des quatre repas, repas absents et zéro explicite',()=>{
   const d=M.blankDay();d.meals.breakfast.kcal=400;d.meals.lunch.kcal=650;d.meals.snack.kcal=0;d.meals.dinner.kcal=700;
@@ -48,4 +48,17 @@ test('somme des quatre repas, repas absents et zéro explicite',()=>{
   d.meals.dinner.kcal=null;assert.deepEqual(M.mealSummary(d),{total:1050,completed:3});
   d.base=2200;assert.equal(M.balance(d).actual,1150);
   const saved=M.validateBackup({version:2,days:{'2026-09-15':d}});assert.equal(saved.days['2026-09-15'].intake,1050);
+});
+test('séances et marche ajustent la dépense et l’objectif calorique du jour',()=>{
+  const day={...legacy(),base:2000,target:400,plannedIntake:1600,intake:2000,steps:8500,walkingKcal:220,activities:[activity(300)]};
+  const balance=M.balance(day);
+  assert.deepEqual(balance,{plannedExpense:2520,actualExpense:2520,planned:400,actual:520});
+  assert.equal(M.dailyIntakeTarget(day,balance.plannedExpense),2120);
+  assert.equal(M.dayType(day),'sport');
+});
+test('les pas restent informatifs sans calories de marche et le total de montre peut compléter',()=>{
+  const day={...legacy(),base:2000,intake:1800,steps:9000,walkingKcal:null};
+  assert.equal(M.balance(day).actual,null);assert.equal(M.dayType(day),'rest');
+  day.total=2350;assert.equal(M.balance(day).actual,550);
+  day.total=null;day.steps=0;assert.equal(M.balance(day).actual,200);
 });

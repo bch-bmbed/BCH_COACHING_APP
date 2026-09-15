@@ -5,7 +5,7 @@
   const copy = value => value === undefined ? undefined : structuredClone(value);
   function flatten(day) {
     const d = day || M.blankDay(), out = {};
-    for (const key of ['plannedIntake','base','target','total','weight','note','intakeMode']) out[key] = d[key];
+    for (const key of ['plannedIntake','base','target','total','weight','steps','walkingKcal','note','intakeMode']) out[key] = d[key];
     out.legacyIntake = d.intakeMode === 'legacy' ? d.intake : null;
     for (const key of Object.keys(M.mealNames)) for (const field of ['kcal','note']) out[`meals.${key}.${field}`] = d.meals[key][field];
     for (const a of d.activities) out[`activity.${a.id}`] = a;
@@ -13,7 +13,7 @@
   }
   function inflate(fields) {
     const d = M.blankDay();
-    for (const key of ['plannedIntake','base','target','total','weight','note','intakeMode']) d[key] = fields[key];
+    for (const key of ['plannedIntake','base','target','total','weight','steps','walkingKcal','note','intakeMode']) d[key] = fields[key];
     for (const key of Object.keys(M.mealNames)) for (const field of ['kcal','note']) d.meals[key][field] = fields[`meals.${key}.${field}`];
     d.activities = Object.keys(fields).filter(k=>k.startsWith('activity.') && fields[k] !== undefined).sort().map(k=>fields[k]);
     d.intake = d.intakeMode === 'legacy' ? fields.legacyIntake : M.mealSummary(d).total;
@@ -34,7 +34,7 @@
     if(key==='profile.resting')return 'Métabolisme de base estimé';
     if(key.startsWith('profile.goals.')){const [, ,date,field]=key.split('.');return `Objectif du ${date} · ${label(field)}`;}
     if(key.startsWith('profile.weights.'))return 'Pesée du '+key.slice('profile.weights.'.length);
-    const titles={expense:'Référence de dépense',maintenance:'Maintien calorique moyen',plannedIntake:'Apports prévus',base:'Dépense hors séances',target:'Déficit cible',total:'Dépense totale',weight:'Pesée',note:'Note du jour',intakeMode:'Mode de saisie des apports',legacyIntake:'Ancien total consommé'};
+    const titles={expense:'Référence de dépense',maintenance:'Maintien calorique moyen',plannedIntake:'Apports prévus',base:'Dépense hors séances',target:'Déficit cible',total:'Dépense totale',weight:'Pesée',steps:'Pas hors séance',walkingKcal:'Calories de marche',note:'Note du jour',intakeMode:'Mode de saisie des apports',legacyIntake:'Ancien total consommé'};
     if(key.startsWith('meals.')) { const [,meal,field]=key.split('.');return `${M.mealNames[meal]} · ${field === 'kcal' ? 'calories' : 'recettes / note'}`; }
     return key.startsWith('activity.') ? 'Activité' : titles[key] || key;
   }
@@ -55,7 +55,7 @@
       if(!Object.hasOwn(b.goals,date) && !Object.hasOwn(r.goals,date)){result.goals[date]=copy(l.goals[date]);continue;}
       const bg=M.goalsAt(b,date)||M.blankGoals(),lg=M.goalsAt(l,date)||M.blankGoals(),rg=M.goalsAt(r,date)||M.blankGoals();
       // The amount and its meaning change together: a total maintenance is not a base excluding sport.
-      const expense=g=>({base:g.base,maintenance:g.maintenance});
+      const expense=g=>({base:g.base,maintenance:g.maintenance,adaptive:g.adaptive??false});
       const mergedExpense=merge('profile.goals.'+date+'.expense',expense(bg),expense(lg),expense(rg));
       result.goals[date]={...Object.fromEntries(['plannedIntake','target'].map(key=>[key,merge('profile.goals.'+date+'.'+key,bg[key],lg[key],rg[key])])),...mergedExpense};
     }

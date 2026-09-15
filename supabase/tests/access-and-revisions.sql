@@ -8,11 +8,16 @@ select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting(
 do $$
 declare r jsonb; n integer;
 begin
-  r:=public.save_journal_day('2000-01-01','{}',0);
+  begin
+    perform public.save_journal_day('2000-01-01','{"schemaVersion":3}',0);
+    raise exception 'Old client accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  r:=public.save_journal_day('2000-01-01','{"schemaVersion":4}',0);
   if not (r->>'saved')::boolean or (r->>'revision')::int<>1 then raise exception 'Initial insert failed';end if;
-  r:=public.save_journal_day('2000-01-01','{"test":2}',0);
+  r:=public.save_journal_day('2000-01-01','{"schemaVersion":4,"test":2}',0);
   if (r->>'saved')::boolean or (r->>'revision')::int<>1 then raise exception 'Stale revision overwrote data';end if;
-  r:=public.save_journal_day('2000-01-01','{"test":2}',1);
+  r:=public.save_journal_day('2000-01-01','{"schemaVersion":4,"test":2}',1);
   if not (r->>'saved')::boolean or (r->>'revision')::int<>2 then raise exception 'Valid update failed';end if;
   perform set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('test.user_b'),'role','authenticated')::text,true);
   select count(*) into n from public.journal_days;

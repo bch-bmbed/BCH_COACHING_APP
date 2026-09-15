@@ -1,7 +1,7 @@
 (function (root) {
   'use strict';
   const sources = {manual: 'Manuelle', garmin: 'Garmin Connect', urevo: 'Urevo', 'google-fit': 'Google Fit', other: 'Autre appareil'};
-  const fields = {plannedIntake: 30000, intake: 30000, base: 30000, target: 10000, total: 30000, weight: 600};
+  const fields = {plannedIntake: 30000, intake: 30000, base: 30000, target: 10000, total: 30000, weight: 600, steps: 200000, walkingKcal: 20000};
   const mealNames = {breakfast: 'Petit déjeuner', lunch: 'Déjeuner', snack: 'Goûter', dinner: 'Dîner'};
   const blankMeals = () => Object.fromEntries(Object.keys(mealNames).map(key => [key, {kcal: null, note: ''}]));
   function validDate(s) {
@@ -10,13 +10,13 @@
     return !Number.isNaN(+d) && d.toISOString().slice(0, 10) === s;
   }
   function blankDay() {
-    return {plannedIntake: null, intake: null, base: null, target: null, total: null, weight: null, note: '', activities: [], meals: blankMeals(), intakeMode: 'meals'};
+    return {schemaVersion: 4, plannedIntake: null, intake: null, base: null, target: null, total: null, weight: null, steps: null, walkingKcal: null, note: '', activities: [], meals: blankMeals(), intakeMode: 'meals'};
   }
   function optionalNumber(value, max, min = 0) {
     return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max);
   }
   const goalFields = {plannedIntake: 30000, base: 30000, target: 10000, maintenance:30000};
-  const blankGoals = () => ({plannedIntake:null,base:null,target:null,maintenance:null});
+  const blankGoals = () => ({plannedIntake:null,base:null,target:null,maintenance:null,adaptive:false});
   const blankProfile = () => ({goals:{},weights:{},resting:null});
   function validateProfile(raw) {
     if(!raw || typeof raw!=='object' || !raw.goals || !raw.weights || Array.isArray(raw.goals) || Array.isArray(raw.weights) || typeof raw.goals!=='object' || typeof raw.weights!=='object' || Object.keys(raw.goals).length>20000 || Object.keys(raw.weights).length>20000)throw Error('Profil invalide.');
@@ -30,7 +30,9 @@
         const value=key==='maintenance'?(raw.goals[date][key]??null):raw.goals[date][key];
         if(!optionalNumber(value,max))throw Error('Objectif invalide : '+key);
         goals[key]=value;
-      }result.goals[date]=goals;
+      }
+      if(raw.goals[date].adaptive!==undefined&&typeof raw.goals[date].adaptive!=='boolean')throw Error('Mode de projection invalide.');
+      goals.adaptive=raw.goals[date].adaptive??false;result.goals[date]=goals;
     }
     for(const date of Object.keys(raw.weights).sort()){
       if(!validDate(date) || !optionalNumber(raw.weights[date],600,1))throw Error('Pesée du profil invalide.');
@@ -61,14 +63,16 @@
     }return null;
   }
   function validateBackup(raw) {
-    if (!raw || ![1, 2, 3].includes(raw.version) || !raw.days || typeof raw.days !== 'object' || Array.isArray(raw.days) || Object.keys(raw.days).length > 20000) throw Error('Format de sauvegarde non reconnu.');
-    const result = {version: 3, days: {}};
+    if (!raw || ![1, 2, 3, 4].includes(raw.version) || !raw.days || typeof raw.days !== 'object' || Array.isArray(raw.days) || Object.keys(raw.days).length > 20000) throw Error('Format de sauvegarde non reconnu.');
+    const result = {version: 4, days: {}};
     for (const [date, day] of Object.entries(raw.days)) {
       if (!validDate(date) || !day || typeof day !== 'object') throw Error('Date ou journée invalide.');
+      if (day.schemaVersion !== undefined && day.schemaVersion !== 4) throw Error('Version de journée non reconnue pour ' + date + '.');
       const clean = blankDay();
       for (const [key, max] of Object.entries(fields)) {
-        if (!optionalNumber(day[key], max, key === 'weight' ? 1 : 0)) throw Error('Valeur invalide pour ' + date + ' : ' + key);
-        clean[key] = day[key];
+        const value = ['steps','walkingKcal'].includes(key) ? (day[key] ?? null) : day[key];
+        if (!optionalNumber(value, max, key === 'weight' ? 1 : 0)) throw Error('Valeur invalide pour ' + date + ' : ' + key);
+        clean[key] = value;
       }
       if (raw.version === 1 && !day.meals) clean.intakeMode = 'legacy';
       else {
@@ -92,7 +96,7 @@
       });
       result.days[date] = clean;
     }
-    result.profile=raw.version===3?validateProfile(raw.profile):profileFromDays(result.days);
+    result.profile=raw.version>=3?validateProfile(raw.profile):profileFromDays(result.days);
     return result;
   }
   function mealSummary(day) {
@@ -103,15 +107,31 @@
   function sumCalories(activities) {
     return activities.some(a => a.kcal === null) ? null : activities.reduce((sum, a) => sum + a.kcal, 0);
   }
+  function walkingCalories(day) {
+    if (day.walkingKcal !== null) return day.walkingKcal;
+    return day.steps === null || day.steps === 0 ? 0 : null;
+  }
+  function addWalking(sessionCalories, day) {
+    const walking = walkingCalories(day);
+    return sessionCalories === null || walking === null ? null : sessionCalories + walking;
+  }
+  function dayType(day) {
+    return day.activities.length ? 'sport' : 'rest';
+  }
+  function dailyIntakeTarget(day, plannedExpense) {
+    if ((day.maintenance ?? null) === null && day.target !== null && plannedExpense !== null) return Math.max(0, plannedExpense - day.target);
+    return day.plannedIntake;
+  }
   function balance(day) {
     // Maintenance already includes the usual activity averaged across the week.
     const maintenance=day.maintenance??null;
-    const plannedSport = sumCalories(day.activities);
-    const doneSport = sumCalories(day.activities.filter(a => a.state === 'done'));
+    const plannedSport = addWalking(sumCalories(day.activities),day);
+    const doneSport = addWalking(sumCalories(day.activities.filter(a => a.state === 'done')),day);
     const plannedExpense = maintenance!==null?maintenance:day.base === null || plannedSport === null ? null : day.base + plannedSport;
     const actualExpense = day.total !== null ? day.total : maintenance!==null?maintenance:day.base === null || doneSport === null ? null : day.base + doneSport;
     const intake = day.intakeMode === 'meals' ? mealSummary(day).total : day.intake;
-    return {plannedExpense, actualExpense, planned: plannedExpense === null || day.plannedIntake === null ? null : plannedExpense - day.plannedIntake, actual: actualExpense === null || intake === null ? null : actualExpense - intake};
+    const targetIntake = dailyIntakeTarget(day,plannedExpense);
+    return {plannedExpense, actualExpense, planned: plannedExpense === null || targetIntake === null ? null : plannedExpense - targetIntake, actual: actualExpense === null || intake === null ? null : actualExpense - intake};
   }
   function shiftDate(date, delta) {
     const d = new Date(date + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10);
@@ -128,7 +148,7 @@
     merged.profile=validateProfile(merged.profile);
     return {data: merged, added, skipped};
   }
-  const api = {sources, mealNames, blankMeals, mealSummary, blankDay, validDate, validateBackup, balance, shiftDate, mergeBackup,goalFields,blankGoals,blankProfile,validateProfile,profileFromDays,goalsAt,effectiveDay,weightOn,latestWeight};
+  const api = {sources, mealNames, blankMeals, mealSummary, blankDay, validDate, validateBackup, balance, dayType, dailyIntakeTarget, shiftDate, mergeBackup,goalFields,blankGoals,blankProfile,validateProfile,profileFromDays,goalsAt,effectiveDay,weightOn,latestWeight};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Equilibre = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
