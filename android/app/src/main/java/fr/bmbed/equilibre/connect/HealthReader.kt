@@ -42,9 +42,10 @@ class HealthReader(context: Context) {
         val records=records(first,now,source).map { EnergyInterval(it.startTime,it.endTime,it.energy.inKilocalories,it.metadata.lastModifiedTime) }
         for(index in (days-1) downTo 0) {
             val day=today.minusDays(index.toLong());val start=day.atStartOfDay(zone).toInstant();val end=day.plusDays(1).atStartOfDay(zone).toInstant();val until=minOf(now,end)
+            val energyUntil=records.filter { it.start<until&&it.end>start }.maxOfOrNull { minOf(it.end,until) } ?: start
             val bins=JSONArray();var cursor=start
-            while(cursor<until) {
-                val next=minOf(cursor.plusSeconds(3600),until);val bin=EnergyIntervals.bin(cursor,next,records)
+            while(cursor<energyUntil) {
+                val next=minOf(cursor.plusSeconds(3600),energyUntil);val bin=EnergyIntervals.bin(cursor,next,records)
                 bins.put(JSONObject().put("start",cursor.toString()).put("end",next.toString()).put("total",bin.total ?: JSONObject.NULL).put("covered",bin.covered).put("maxRecordSeconds",bin.maxRecordSeconds));cursor=next
             }
             val steps=if(granted.contains(HealthPermission.getReadPermission(StepsRecord::class)))client.aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL),TimeRangeFilter.between(start,until)))[StepsRecord.COUNT_TOTAL] else null
