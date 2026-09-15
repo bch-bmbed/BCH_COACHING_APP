@@ -8,14 +8,53 @@ const fmt = n => n === null ? '—' : number.format(n);
 const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const ids = {plannedIntake: 'planned-intake', base: 'base', target: 'target', total: 'total', weight: 'weight'};
 let data = {version: 2, days: {}}, selected = localDate(), activities = [], dirty = false, locked = false, intakeMode = 'meals', legacyIntake = null, cloudBase = {};
+const viewIds = ['bilan', 'repas', 'activites', 'tendances', 'compte'];
+const viewAliases = {journal: 'bilan', sync: 'compte', sources: 'compte'};
+function showView(fragment, focus = false) {
+  const id = Object.hasOwn(viewAliases, fragment) ? viewAliases[fragment] : (viewIds.includes(fragment) ? fragment : 'bilan');
+  for (const name of viewIds) $(name).hidden = name !== id;
+  for (const link of document.querySelectorAll('.app-nav a')) {
+    if (link.hash === '#' + id) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  $('day-toolbar').hidden = id === 'compte'; $('save-bar').hidden = id === 'compte';
+  $('save-state').hidden = id === 'activites'; $('activity-save-hint').hidden = id !== 'activites';
+  $('save-button').setAttribute('form', id === 'activites' ? 'activity-form' : 'day-form');
+  $('save-button').textContent = id === 'activites' ? '+ Ajouter l’activité' : 'Enregistrer la journée';
+  if (fragment === 'sources') $('sources').open = true;
+  if (focus) { $(id + '-title').focus({preventScroll: true}); window.scrollTo({top: 0, behavior: 'instant'}); }
+}
+function navigateView(fragment) {
+  if (location.hash !== '#' + fragment) history.pushState(null, '', '#' + fragment);
+  showView(fragment, true);
+}
+document.addEventListener('click', e => {
+  const link = e.target.closest('a[href^="#"]');
+  if (!link || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+  const fragment = link.hash.slice(1);
+  if (!viewIds.includes(fragment) && !Object.hasOwn(viewAliases, fragment)) return;
+  e.preventDefault(); navigateView(fragment);
+});
+window.addEventListener('hashchange', () => showView(location.hash.slice(1), true));
+// Keep an incoming email-login fragment intact until the auth SDK consumes it.
+showView(location.hash.slice(1));
+function validateDayForm() {
+  const invalid = Array.from($('day-form').elements).find(field => field.willValidate && !field.validity.valid);
+  if (!invalid) return true;
+  const view = invalid.closest('.app-view');
+  if (view) navigateView(view.id);
+  for (let parent = invalid.parentElement; parent; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true;
+  invalid.reportValidity(); return false;
+}
 for (const [key,name] of Object.entries(M.mealNames)) {
-  const card = document.createElement('div'); card.className = 'meal-card';
-  const title=document.createElement('h3');title.textContent=name;
+  const card = document.createElement('details'); card.className = 'meal-card'; card.open=key==='breakfast';
+  const title=document.createElement('summary'),label=document.createElement('strong'),amount=document.createElement('span');label.textContent=name;amount.id='meal-total-'+key;amount.className='meal-total';title.append(label,amount);
+  card.addEventListener('toggle',()=>{if(card.open)for(const other of $('meals').children)if(other!==card)other.open=false;});
   const kcalLabel=document.createElement('label');kcalLabel.textContent='Calories consommées · kcal';
-  const input=document.createElement('input');input.id='meal-'+key;input.type='number';input.min='0';input.max='10000';input.step='1';input.placeholder='À renseigner';input.setAttribute('aria-label',name+' : calories');kcalLabel.append(input);
+  const input=document.createElement('input');input.id='meal-'+key;input.setAttribute('form','day-form');input.type='number';input.min='0';input.max='10000';input.step='1';input.placeholder='À renseigner';input.setAttribute('aria-label',name+' : calories');kcalLabel.append(input);
   const noteLabel=document.createElement('label');noteLabel.textContent='Recettes / aliments';
-  const note=document.createElement('textarea');note.id='meal-note-'+key;note.maxLength=1000;note.rows=2;note.placeholder='Ce que tu as mangé…';note.setAttribute('aria-label',name+' : recettes ou aliments');noteLabel.append(note);
-  card.append(title,kcalLabel,noteLabel);$('meals').append(card);
+  const note=document.createElement('textarea');note.id='meal-note-'+key;note.setAttribute('form','day-form');note.maxLength=1000;note.rows=2;note.placeholder='Ce que tu as mangé…';note.setAttribute('aria-label',name+' : recettes ou aliments');noteLabel.append(note);
+  const body=document.createElement('div');body.className='meal-body';body.append(kcalLabel,noteLabel);card.append(title,body);$('meals').append(card);
 }
 function announce(message) { $('status').textContent = message; }
 function storageFailure(message) { $('storage-error').hidden = false; $('storage-error').textContent = message; }
@@ -31,14 +70,14 @@ function draft() {
 }
 function save(message = 'Journée enregistrée sur cet appareil.') {
   if (locked) { announce('Sauvegarde bloquée : consulte le message au-dessus du journal.'); return false; }
-  if (!$('day-form').reportValidity()) return false;
+  if (!validateDayForm()) return false;
   try {
     const next = M.validateBackup({version: 2, days: {...data.days, [selected]: draft()}});
     localStorage.setItem(KEY, JSON.stringify({...next,cloudBase})); data = next; dirty = false;
     $('save-state').textContent = 'Enregistré sur cet appareil'; announce(message); renderSummary(); renderTrends(); window.dispatchEvent(new Event('journal-saved')); return true;
   } catch (error) { storageFailure('Enregistrement impossible : ' + error.message + ' Tes changements restent affichés.'); return false; }
 }
-function markDirty() { dirty = true; $('save-state').textContent = 'Modifications à enregistrer'; renderSummary(); }
+function markDirty() { dirty = true; $('save-state').textContent = 'Modifications à enregistrer'; announce('Saisie en cours · pense à enregistrer ta journée.'); renderSummary(); }
 function showDay(date) {
   selected = date; $('date').value = date;
   const day = data.days[date] || M.blankDay();
@@ -52,9 +91,10 @@ function showDay(date) {
   renderActivities(); renderSummary(); renderTrends();
 }
 function changeDate(date) {
-  if (!M.validDate(date)) { $('date').value = selected; announce('Choisis une date valide entre 1900 et 2100.'); return; }
-  if (dirty && !save()) { $('date').value = selected; return; }
+  if (!M.validDate(date)) { $('date').value = selected; announce('Choisis une date valide entre 1900 et 2100.'); return false; }
+  if (dirty && !save()) { $('date').value = selected; return false; }
   showDay(date); announce(data.days[date] ? 'Journée chargée.' : 'Nouvelle journée : renseigne tes valeurs.');
+  return true;
 }
 function metric(id, value) {
   $(id).textContent = fmt(value);
@@ -63,6 +103,10 @@ function metric(id, value) {
 function renderSummary() {
   const day = draft(), b = M.balance(day);
   const meals=M.mealSummary(day);$('intake').textContent=fmt(day.intake);
+  for(const [key,meal] of Object.entries(day.meals)) $('meal-total-'+key).textContent=meal.kcal===null?'À renseigner':fmt(meal.kcal)+' kcal';
+  $('overview-meals').textContent=meals.completed===null?'Ancien total conservé':`${meals.completed}/4 renseignés`;
+  const completedActivities=day.activities.filter(a=>a.state==='done').length;
+  $('overview-activities').textContent=`${day.activities.length} séance${day.activities.length>1?'s':''} · ${completedActivities} réalisée${completedActivities>1?'s':''}`;
   $('meal-progress').textContent=intakeMode==='legacy'?'L’ancien total reste utilisé. La répartition est facultative.':`${meals.completed}/4 repas renseignés · ${fmt(meals.total)} kcal${meals.completed < 4 ? ' · total provisoire' : ''}. Saisis 0 pour un repas non pris.`;
   metric('intake-value', day.intake); metric('expenditure-value', b.plannedExpense); metric('planned-value', b.planned); metric('actual-value', b.actual);
   $('intake-detail').textContent = day.plannedIntake === null ? 'Apports prévus non renseignés' : `Apports prévus : ${fmt(day.plannedIntake)} kcal`;
@@ -122,12 +166,12 @@ function renderTrends() {
   if (!dates.length) { const td = el('td','Aucune journée enregistrée pour le moment.');td.colSpan=6; const row=el('tr');row.append(td);body.append(row); }
   dates.forEach(date => {
     const day=data.days[date],b=M.balance(day),row=el('tr'),td=el('td'),button=el('button',new Date(date+'T12:00:00').toLocaleDateString('fr-FR'));
-    button.type='button'; button.onclick=()=>{changeDate(date);$('date').focus();};td.append(button);row.append(td);
+    button.type='button'; button.onclick=()=>{if(changeDate(date))navigateView('bilan');};td.append(button);row.append(td);
     [day.intake,b.planned,b.actual].forEach(v=>row.append(el('td',v === null ? '—' : fmt(v)+' kcal')));
     row.append(el('td',day.weight===null?'—':fmt(day.weight)+' kg'),el('td',String(day.activities.length)));body.append(row);
   });
 }
-$('day-form').addEventListener('input',markDirty);
+document.addEventListener('input',e=>{if(e.target.form===$('day-form'))markDirty();});
 $('day-form').addEventListener('submit',e=>{e.preventDefault();if(save())window.dispatchEvent(new Event('journal-saved'));});
 $('use-meals').onclick=()=>{intakeMode='meals';$('legacy-intake').hidden=true;markDirty();};
 $('activity-form').addEventListener('submit',e=>{
@@ -144,7 +188,7 @@ window.addEventListener('storage',e=>{if(e.key===KEY || e.key===null){locked=tru
 $('export').onclick=()=>{
   let content;
   if(locked){try{content=localStorage.getItem(KEY);}catch{}if(!content){announce('La sauvegarde locale ne peut pas être lue.');return;}}
-  else{try{if(dirty&&!$('day-form').reportValidity())return;const snapshot=M.validateBackup(dirty?{version:2,days:{...data.days,[selected]:draft()}}:data);content=JSON.stringify({...snapshot,exportedAt:new Date().toISOString()},null,2);}catch(error){announce('Export impossible : '+error.message);return;}}
+  else{try{if(dirty&&!validateDayForm())return;const snapshot=M.validateBackup(dirty?{version:2,days:{...data.days,[selected]:draft()}}:data);content=JSON.stringify({...snapshot,exportedAt:new Date().toISOString()},null,2);}catch(error){announce('Export impossible : '+error.message);return;}}
   const url=URL.createObjectURL(new Blob([content],{type:'application/json'})),a=el('a');a.href=url;a.download=`equilibre-${localDate()}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);announce('Sauvegarde exportée. Conserve-la dans un emplacement personnel.');
 };
 $('import').addEventListener('change',async e=>{

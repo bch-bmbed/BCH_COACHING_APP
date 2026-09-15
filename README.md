@@ -4,6 +4,8 @@ Dashboard statique sur GitHub Pages, avec journal local et synchronisation priv�
 
 ## Disponible
 
+- Cinq vues : Bilan (calories et repères du jour), Repas, Activités, Suivi (pesées, tendances et historique), Compte (synchronisation, sauvegardes et plateformes). Navigation fixe en bas sur mobile et dans l’en-tête sur PC. La date est commune aux vues du journal. Les quatre repas sont repliables.
+- Changer de vue conserve les saisies en cours. Le bouton fixe enregistre la journée ou ajoute une activité selon la vue. Les champs journaliers restent associés au même formulaire ; une valeur invalide ouvre sa vue et son panneau avant d’afficher l’erreur. Les anciens liens `#journal`, `#sync` et `#sources` restent utilisables.
 - Journal daté : apports prévus et consommés, dépense hors séances, déficit cible facultatif, total de la montre, poids et note.
 - Quatre repas : petit déjeuner, déjeuner, goûter, dîner. Calories et note de recettes/aliments par repas. La somme est automatique ; les repas non renseignés rendent le total provisoire. Saisir 0 pour un repas non pris. Les notes ne sont pas analysées automatiquement pour calculer les calories.
 - Activités prévues ou réalisées, durée, calories actives et provenance déclarée. La provenance n'est pas une connexion automatique.
@@ -80,5 +82,7 @@ Sources officielles consultées le 15 septembre 2026 :
 ## Vérification
 
 Exécuter `node --test tests/*.test.cjs` : 21 tests de calculs, migration, fusion, deux clients simulés, conflits de révision et coupure réseau. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
+
+Navigation vérifiée dans le navigateur aux largeurs 320, 390 et 1280 px : une seule vue visible, aucun débordement horizontal, saisie répartie sur plusieurs onglets puis enregistrement, correction d’un champ invalide dans un panneau masqué, ajout d’activité, rechargement des repas/notes/pesée, retour et avance du navigateur, lien historique de connexion `#sync`. Les données de ces essais restent dans le stockage local de la prévisualisation.
 
 Exécuter `supabase/tests/access-and-revisions.sql` sur le projet pour vérifier les accès autorisés/interdits et les révisions. Le script utilise une transaction annulée : aucune donnée fictive ne reste en base. Ce test a été exécuté avec succès sur le projet, et les contrôles de sécurité Supabase n'ont remonté aucun avertissement.
