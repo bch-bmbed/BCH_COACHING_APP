@@ -21,4 +21,10 @@ class EnergyIntervalsTest {
         val b=EnergyIntervals.bin(start,start.plusSeconds(3600),listOf(EnergyInterval(start,start.plusSeconds(86400),2400.0,start)))
         assertEquals(100.0,b.total!!,0.01);assertEquals(86400.0,b.maxRecordSeconds,0.01)
     }
+    @Test fun newerFineRecordCannotHideCoarseContributor() {
+        val coarse=EnergyInterval(start,start.plusSeconds(86400),2400.0,start)
+        val fine=EnergyInterval(start,start.plusSeconds(3600),120.0,start.plusSeconds(60))
+        val b=EnergyIntervals.coverage(start,start.plusSeconds(3600),listOf(coarse,fine))
+        assertEquals(86400.0,b.maxRecordSeconds,0.01);assertEquals(3600.0,b.covered,0.01)
+    }
 }

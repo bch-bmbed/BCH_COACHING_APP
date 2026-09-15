@@ -64,8 +64,11 @@ class HealthReader(context: Context) {
             // Aggregate removes overlapping Activity data using Health Connect priorities.
             val hourly=if(energyUntil>start)client.aggregateGroupByDuration(AggregateGroupByDurationRequest(setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL),TimeRangeFilter.between(start,energyUntil),Duration.ofHours(1))).associateBy { it.startTime } else emptyMap()
             while(cursor<energyUntil) {
-                val next=minOf(cursor.plusSeconds(3600),energyUntil);val coverage=EnergyIntervals.bin(cursor,next,energy)
-                val value=if(coverage.covered>0)hourly[cursor]?.result?.get(TotalCaloriesBurnedRecord.ENERGY_TOTAL)?.inKilocalories else null
+                val next=minOf(cursor.plusSeconds(3600),energyUntil);val aggregation=hourly[cursor]?.result
+                val contributors=aggregation?.dataOrigins?.map { it.packageName }?.toSet() ?: emptySet()
+                val contributingRecords=totals.filter { contributors.isEmpty()||it.metadata.dataOrigin.packageName in contributors }.map { EnergyInterval(it.startTime,it.endTime,it.energy.inKilocalories,it.metadata.lastModifiedTime) }
+                val coverage=EnergyIntervals.coverage(cursor,next,contributingRecords)
+                val value=if(coverage.covered>0)aggregation?.get(TotalCaloriesBurnedRecord.ENERGY_TOTAL)?.inKilocalories else null
                 bins.put(JSONObject().put("start",cursor.toString()).put("end",next.toString()).put("total",value ?: JSONObject.NULL).put("covered",if(value==null)0 else coverage.covered).put("maxRecordSeconds",coverage.maxRecordSeconds));cursor=next
             }
             val stepsResult=if(stepsPermission in granted)client.aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL),TimeRangeFilter.between(start,until))) else null
@@ -75,7 +78,7 @@ class HealthReader(context: Context) {
             for(s in daySessions) {
                 val window=s.startTime to s.endTime
                 if(activePermission in granted&&!caloriesCache.containsKey(window))caloriesCache[window]=client.aggregate(AggregateRequest(setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL),TimeRangeFilter.between(s.startTime,s.endTime)))[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
-                sessionJson.put(JSONObject().put("id",s.metadata.id).put("clientId",s.metadata.clientRecordId?.take(200) ?: JSONObject.NULL).put("source",s.metadata.dataOrigin.packageName).put("modifiedAt",s.metadata.lastModifiedTime.toString()).put("start",s.startTime.toString()).put("end",s.endTime.toString()).put("type",s.exerciseType).put("kind",kind(s.exerciseType)).put("title",s.title?.take(160) ?: "").put("activeKcal",caloriesCache[window] ?: JSONObject.NULL))
+                sessionJson.put(JSONObject().put("id",s.metadata.id).put("clientId",s.metadata.clientRecordId?.takeIf { it.isNotBlank()&&it.length<=200 } ?: JSONObject.NULL).put("source",s.metadata.dataOrigin.packageName).put("modifiedAt",s.metadata.lastModifiedTime.toString()).put("start",s.startTime.toString()).put("end",s.endTime.toString()).put("type",s.exerciseType).put("kind",kind(s.exerciseType)).put("title",s.title?.take(160) ?: "").put("activeKcal",caloriesCache[window] ?: JSONObject.NULL))
             }
             val origins=(totals.filter { it.startTime<until&&it.endTime>start }.map { it.metadata.dataOrigin.packageName }+daySessions.map { it.metadata.dataOrigin.packageName }+(stepsResult?.dataOrigins?.map { it.packageName } ?: emptyList())).distinct().sorted()
             val permissions=JSONObject().put("total",totalPermission in granted).put("steps",stepsPermission in granted).put("sessions",sessionPermission in granted).put("activeCalories",activePermission in granted)
