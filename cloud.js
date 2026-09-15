@@ -9,7 +9,7 @@
     const box=$('conflict-items');box.replaceChildren();$('conflicts').hidden=pending.size===0;
     for(const [date,item] of pending){
       const form=document.createElement('form');form.className='conflict-day';
-      const title=document.createElement('h4');title.textContent=date.split('-').reverse().join('/');form.append(title);
+      const title=document.createElement('h4');title.textContent=date==='profile'?'Profil du compte':date.split('-').reverse().join('/');form.append(title);
       for(const conflict of item.conflicts){
         const label=document.createElement('label');label.textContent=S.label(conflict.key);
         const select=document.createElement('select');select.name=conflict.key;select.required=true;
@@ -20,6 +20,11 @@
       form.onsubmit=e=>{
         e.preventDefault();if(!J.saveDraft())return;
         const current=J.snapshot();
+        if(date==='profile'){
+          if(!S.same(J.profile(),item.local)){pending.delete(date);paintConflicts();schedule();return;}
+          const result=S.mergeProfile(item.base,item.local,item.remote,Object.fromEntries(new FormData(form)));
+          J.applyProfile(result.profile,item.remote);pending.delete(date);paintConflicts();schedule();return;
+        }
         if(!S.same(current.days[date],item.local)){pending.delete(date);paintConflicts();schedule();return;}
         const resolutions=Object.fromEntries(new FormData(form));
         const result=S.mergeDay(item.base,item.local,item.remote,resolutions), bases=J.base();
@@ -39,6 +44,36 @@
       if(rows.length>=20000)throw Error('Le journal dépasse la limite de synchronisation.');
     }return new Map(rows.map(row=>[row.day,row]));
   }
+  async function syncProfile(user,epoch){
+    const response=await client.from('account_profiles').select('payload,revision').eq('user_id',user.id).maybeSingle();
+    if(response.error)throw response.error;
+    if(epoch!==generation)return false;
+    if(J.hasDraft()){status('À enregistrer','Enregistre ta saisie pour reprendre la synchronisation.');return false;}
+    const local=J.profile(),base=J.profileBase();let row=response.data,remote=row?M.validateProfile(row.payload):undefined;
+    for(let attempt=0;attempt<4;attempt++){
+      const merged=S.mergeProfile(base,local,remote);
+      if(merged.conflicts.length){
+        pending.set('profile',{base,local,remote,conflicts:merged.conflicts});paintConflicts();
+        status('Choix nécessaire','Ton profil a été modifié sur deux appareils. Départage les champs ci-dessous.');return false;
+      }
+      if(!S.same(merged.profile,remote)){
+        const write=await client.rpc('save_account_profile',{p_payload:merged.profile,p_expected_revision:row?.revision??0});
+        if(write.error)throw write.error;
+        if(epoch!==generation)return false;
+        row=write.data;remote=row.payload?M.validateProfile(row.payload):undefined;
+        if(!row.saved){if(attempt===3)throw Error('Le profil change sur un autre appareil. Réessaie la synchronisation.');continue;}
+      }
+      if(J.hasDraft() || !S.same(J.profile(),local)){
+        // Rebase a newly saved edit on our accepted write, without replacing a live form.
+        if(!J.hasDraft()){
+          const updated=S.mergeProfile(local,J.profile(),remote);
+          if(!updated.conflicts.length)J.applyProfile(updated.profile,remote);
+        }
+        status('À synchroniser','Ta nouvelle saisie du profil est conservée. Enregistre-la pour reprendre la synchronisation.');return false;
+      }
+      J.applyProfile(remote,remote);pending.delete('profile');return true;
+    }
+  }
   function schedule(){clearTimeout(timer);timer=setTimeout(()=>sync(),900);}
   async function sync(){
     if(!account || running || J.blocked())return;
@@ -47,6 +82,7 @@
     running=true;const user=account,epoch=generation;
     status('Synchronisation…','Mise à jour de ton journal privé.');
     try{
+      if(!await syncProfile(user,epoch))return;
       const rows=await fetchRows(user);
       if(epoch!==generation)return;
       const initial=J.snapshot();
@@ -83,7 +119,7 @@
     if(!J.activate(user?.id)){status('Action nécessaire','Enregistre ou exporte tes modifications avant de changer de compte.');return;}
     account=user;$('login-form').hidden=!!user;$('account-actions').hidden=!user;
     $('account-email').textContent=user?.email||'';
-    if(user){const count=Object.keys(J.localData().days).length;$('copy-local').hidden=!count;status('Connecté','Ton journal privé va être récupéré.');schedule();}
+    if(user){const local=J.localData(),count=Object.keys(local.days).length+Object.keys(local.profile.goals).length+Object.keys(local.profile.weights).length;$('copy-local').hidden=!count;status('Connecté','Ton journal privé va être récupéré.');schedule();}
     else status('Sur cet appareil','Tu es déconnecté. Les journées locales restent disponibles ; les données du compte sont masquées.');
   }
   $('login-form').onsubmit=async e=>{
@@ -117,7 +153,11 @@
       }else next.days[date]=day;
       added++;
     }
-    J.apply(next,bases);paintConflicts();status('Transfert préparé',`${added} journée(s) réunie(s). Les éventuelles différences seront à départager. Les originaux locaux restent disponibles.`);$('copy-local').hidden=true;schedule();
+    const remote=J.profile(),result=S.mergeProfile(undefined,source.profile,remote);
+    next.profile=result.profile;
+    J.apply(next,bases);J.applyProfile(result.profile,null);
+    if(result.conflicts.length)pending.set('profile',{base:undefined,local:result.profile,remote,conflicts:result.conflicts});
+    paintConflicts();status('Transfert préparé',`${added} journée(s) et profil réunis. Les éventuelles différences seront à départager. Les originaux locaux restent disponibles.`);$('copy-local').hidden=true;schedule();
   };
   window.addEventListener('journal-saved',schedule);window.addEventListener('online',schedule);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)schedule();});

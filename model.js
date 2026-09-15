@@ -15,9 +15,52 @@
   function optionalNumber(value, max, min = 0) {
     return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max);
   }
+  const goalFields = {plannedIntake: 30000, base: 30000, target: 10000};
+  const blankGoals = () => ({plannedIntake:null,base:null,target:null});
+  const blankProfile = () => ({goals:{},weights:{}});
+  function validateProfile(raw) {
+    if(!raw || typeof raw!=='object' || !raw.goals || !raw.weights || Array.isArray(raw.goals) || Array.isArray(raw.weights) || typeof raw.goals!=='object' || typeof raw.weights!=='object' || Object.keys(raw.goals).length>20000 || Object.keys(raw.weights).length>20000)throw Error('Profil invalide.');
+    const result=blankProfile();
+    for(const date of Object.keys(raw.goals).sort()){
+      if(!validDate(date) || !raw.goals[date] || typeof raw.goals[date]!=='object')throw Error('Date d’objectif invalide.');
+      const goals=blankGoals();
+      for(const [key,max] of Object.entries(goalFields)){
+        const value=raw.goals[date][key];
+        if(!optionalNumber(value,max))throw Error('Objectif invalide : '+key);
+        goals[key]=value;
+      }result.goals[date]=goals;
+    }
+    for(const date of Object.keys(raw.weights).sort()){
+      if(!validDate(date) || !optionalNumber(raw.weights[date],600,1))throw Error('Pesée du profil invalide.');
+      result.weights[date]=raw.weights[date];
+    }return result;
+  }
+  function profileFromDays(days) {
+    const profile=blankProfile();
+    for(const date of Object.keys(days).sort()){
+      const day=days[date];
+      profile.goals[date]=Object.fromEntries(Object.keys(goalFields).map(key=>[key,day[key]]));
+      if(day.weight!==null)profile.weights[date]=day.weight;
+    }return validateProfile(profile);
+  }
+  function goalsAt(profile,date) {
+    const from=Object.keys(profile.goals).filter(d=>d<=date).sort().at(-1);
+    return from?structuredClone(profile.goals[from]):null;
+  }
+  function effectiveDay(day,profile,date) {
+    return {...(day||blankDay()),...(goalsAt(profile,date)||{})};
+  }
+  function weightOn(profile,days,date) {
+    return Object.hasOwn(profile.weights,date)?profile.weights[date]:(days[date]?.weight??null);
+  }
+  function latestWeight(profile,days,until) {
+    for(const date of [...new Set([...Object.keys(profile.weights),...Object.keys(days)])].filter(d=>d<=until).sort().reverse()){
+      const weight=weightOn(profile,days,date);if(weight!==null)return {date,weight};
+    }return null;
+  }
   function validateBackup(raw) {
-    if (!raw || ![1, 2].includes(raw.version) || !raw.days || typeof raw.days !== 'object' || Array.isArray(raw.days) || Object.keys(raw.days).length > 20000) throw Error('Format de sauvegarde non reconnu.');
-    const result = {version: 2, days: {}};
+    if (!raw || ![1, 2, 3].includes(raw.version) || !raw.days || typeof raw.days !== 'object' || Array.isArray(raw.days) || Object.keys(raw.days).length > 20000) throw Error('Format de sauvegarde non reconnu.');
+    const result = {version: 3, days: {}};
     for (const [date, day] of Object.entries(raw.days)) {
       if (!validDate(date) || !day || typeof day !== 'object') throw Error('Date ou journée invalide.');
       const clean = blankDay();
@@ -47,6 +90,7 @@
       });
       result.days[date] = clean;
     }
+    result.profile=raw.version===3?validateProfile(raw.profile):profileFromDays(result.days);
     return result;
   }
   function mealSummary(day) {
@@ -75,9 +119,11 @@
       if (Object.hasOwn(merged.days, date)) skipped++;
       else { merged.days[date] = day; added++; }
     }
+    for(const key of ['goals','weights'])for(const [date,value] of Object.entries(data.profile[key]))if(!Object.hasOwn(merged.profile[key],date))merged.profile[key][date]=structuredClone(value);
+    merged.profile=validateProfile(merged.profile);
     return {data: merged, added, skipped};
   }
-  const api = {sources, mealNames, blankMeals, mealSummary, blankDay, validDate, validateBackup, balance, shiftDate, mergeBackup};
+  const api = {sources, mealNames, blankMeals, mealSummary, blankDay, validDate, validateBackup, balance, shiftDate, mergeBackup,goalFields,blankGoals,blankProfile,validateProfile,profileFromDays,goalsAt,effectiveDay,weightOn,latestWeight};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Equilibre = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -8,3 +8,6 @@ imports/
 node_modules/
 .DS_Store
 Thumbs.db
+
+# Supabase CLI local cache
+supabase/.temp/

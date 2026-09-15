@@ -31,10 +31,35 @@
     return {day:inflate(result),conflicts};
   }
   function label(key) {
+    if(key.startsWith('profile.goals.')){const [, ,date,field]=key.split('.');return `Objectif du ${date} · ${label(field)}`;}
+    if(key.startsWith('profile.weights.'))return 'Pesée du '+key.slice('profile.weights.'.length);
     const titles={plannedIntake:'Apports prévus',base:'Dépense hors séances',target:'Déficit cible',total:'Dépense totale',weight:'Pesée',note:'Note du jour',intakeMode:'Mode de saisie des apports',legacyIntake:'Ancien total consommé'};
     if(key.startsWith('meals.')) { const [,meal,field]=key.split('.');return `${M.mealNames[meal]} · ${field === 'kcal' ? 'calories' : 'recettes / note'}`; }
     return key.startsWith('activity.') ? 'Activité' : titles[key] || key;
   }
-  const api={same,mergeDay,label};
+  function mergeProfile(base,local,remote,resolutions={}) {
+    const b=base||M.blankProfile(),l=local||M.blankProfile(),r=remote||M.blankProfile(),result=M.blankProfile(),conflicts=[];
+    function merge(key,bv,lv,rv){
+      if(same(lv,rv))return copy(lv);
+      if(same(lv,bv))return copy(rv);
+      if(same(rv,bv))return copy(lv);
+      if(resolutions[key]==='local')return copy(lv);
+      if(resolutions[key]==='remote')return copy(rv);
+      conflicts.push({key,local:copy(lv),remote:copy(rv)});return copy(lv);
+    }
+    for(const date of new Set([...Object.keys(b.goals),...Object.keys(l.goals),...Object.keys(r.goals)])){
+      // Distinct effective dates are independent changes; merge fields only within a shared period.
+      if(!Object.hasOwn(b.goals,date) && !Object.hasOwn(l.goals,date)){result.goals[date]=copy(r.goals[date]);continue;}
+      if(!Object.hasOwn(b.goals,date) && !Object.hasOwn(r.goals,date)){result.goals[date]=copy(l.goals[date]);continue;}
+      const bg=M.goalsAt(b,date)||M.blankGoals(),lg=M.goalsAt(l,date)||M.blankGoals(),rg=M.goalsAt(r,date)||M.blankGoals();
+      result.goals[date]=Object.fromEntries(Object.keys(M.goalFields).map(key=>[key,merge('profile.goals.'+date+'.'+key,bg[key],lg[key],rg[key])]));
+    }
+    for(const date of new Set([...Object.keys(b.weights),...Object.keys(l.weights),...Object.keys(r.weights)])){
+      const value=merge('profile.weights.'+date,b.weights[date],l.weights[date],r.weights[date]);
+      if(value!==undefined)result.weights[date]=value;
+    }
+    return {profile:M.validateProfile(result),conflicts};
+  }
+  const api={same,mergeDay,label,mergeProfile};
   if(typeof module !== 'undefined' && module.exports)module.exports=api;else root.EquilibreSync=api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
