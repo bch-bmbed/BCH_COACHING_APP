@@ -27,6 +27,16 @@ begin
     raise exception 'Invalid metabolism accepted';
   exception when check_violation then null;
   end;
+  r:=public.save_account_profile('{"goals":{"2000-01-01":{"maintenance":2750,"base":null,"plannedIntake":2400,"target":350}},"weights":{},"resting":1760}',3);
+  if not (r->>'saved')::boolean then raise exception 'Maintenance save failed';end if;
+  begin
+    perform public.save_account_profile('{"goals":{"2000-01-01":{"base":2300,"plannedIntake":2400,"target":350}},"weights":{}}',4);
+    raise exception 'Old client erased maintenance';
+  exception when raise_exception then
+    if sqlerrm not like 'Actualise la page%' then raise;end if;
+  end;
+  r:=public.save_account_profile('{"goals":{"2000-01-01":{"maintenance":null,"base":2300,"plannedIntake":2400,"target":350}},"weights":{}}',4);
+  if not (r->>'saved')::boolean or r->'payload'->'goals'->'2000-01-01'->'maintenance' is distinct from 'null'::jsonb then raise exception 'Explicit method change failed';end if;
   perform set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('test.user_b'),'role','authenticated')::text,true);
   select count(*) into n from public.account_profiles;
   if n<>0 then raise exception 'Cross-account read allowed';end if;

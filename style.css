@@ -128,3 +128,5 @@ footer{max-width:1280px;margin:auto;padding-top:14px;padding-bottom:14px}
 @media(max-width:760px){.profile-goals{grid-template-columns:1fr;gap:0}.profile-summary{padding:17px 18px}.profile-summary p{font-size:12px}.profile-actions{align-items:stretch;flex-direction:column;gap:10px}.profile-panel .panel-heading{align-items:start;gap:12px}.profile-panel .pill{font-size:10px;text-align:center}}
 
 .metabolism-reference{max-width:620px;padding:18px;background:#f2f8f5;border:1px solid #d9e8df;border-radius:10px;margin:0 0 22px}.metabolism-reference .hint{margin:10px 0 0}
+
+.profile-mode-label{margin-bottom:20px}.profile-goals.maintenance-mode{grid-template-columns:repeat(2,minmax(0,1fr))}.profile-projection{font-size:14px;font-weight:600;color:#25765c;margin:18px 0 10px}@media(max-width:760px){.profile-goals.maintenance-mode{grid-template-columns:1fr}}

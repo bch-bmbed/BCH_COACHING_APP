@@ -7,7 +7,7 @@ const number = new Intl.NumberFormat('fr-FR', {maximumFractionDigits: 2});
 const fmt = n => n === null ? '—' : number.format(n);
 const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const ids = {total: 'total'};
-const profileIds = {plannedIntake:'profile-intake',base:'profile-base',target:'profile-target'};
+const profileIds = {plannedIntake:'profile-intake',base:'profile-base',target:'profile-target',maintenance:'profile-maintenance'};
 let data = {version: 3, days: {},profile:M.blankProfile()}, selected = localDate(), activities = [], dirty = false, profileDirty=false, profileWeightDirty=false, locked = false, intakeMode = 'meals', legacyIntake = null, cloudBase = {}, cloudProfileBase=null;
 const readLocal=()=>localStorage.getItem(LOCAL_KEY)||localStorage.getItem('equilibre-journal-v2')||localStorage.getItem('equilibre-journal-v1');
 const viewIds = ['bilan', 'repas', 'activites', 'tendances', 'compte'];
@@ -71,11 +71,22 @@ function draft() {
   day.note = $('note').value; day.activities = structuredClone(activities); return day;
 }
 function persist(next,dayBase=cloudBase,profileBase=cloudProfileBase){localStorage.setItem(KEY,JSON.stringify({...next,cloudBase:dayBase,cloudProfileBase:profileBase}));}
+function renderProfileCalculation(){
+  const average=$('profile-mode').value==='maintenance';
+  $('profile-maintenance-field').hidden=!average;$('profile-base-field').hidden=average;$('profile-target-field').hidden=average;
+  $('profile-maintenance').disabled=!average;$('profile-base').disabled=average;$('profile-target').disabled=average;
+  $('profile-goal-fields').classList.toggle('maintenance-mode',average);
+  const maintenance=$('profile-maintenance').value===''?null:Number($('profile-maintenance').value),intake=$('profile-intake').value===''?null:Number($('profile-intake').value);
+  const gap=maintenance===null||intake===null?null:maintenance-intake;
+  $('profile-calculation').textContent=average?(gap===null?'Renseigne le maintien et les apports pour obtenir le déficit prévu.':gap>=0?`Déficit prévu : ${fmt(gap)} kcal/jour (maintien − apports).`:`Surplus prévu : ${fmt(-gap)} kcal/jour (apports au-dessus du maintien).`):'La dépense hors séances est additionnée aux calories actives des séances saisies.';
+  $('profile-energy-help').textContent=average?'Le maintien comprend déjà le repos, la digestion, les mouvements et le sport habituels, en moyenne sur la semaine. Les séances du journal ne sont pas ajoutées une seconde fois. Cette estimation se réévalue selon ton activité réelle et la tendance des pesées.':'La dépense hors séances comprend le repos, la digestion et les mouvements quotidiens, en excluant les séances ajoutées au journal. Le métabolisme de base seul ne suffit pas.';
+}
 function renderProfile(){
   if(profileDirty)return;
   $('profile-resting').value=data.profile.resting??'';
   const goals=M.goalsAt(data.profile,localDate())||M.blankGoals();
   for(const [key,id] of Object.entries(profileIds))$(id).value=goals[key]??'';
+  $('profile-mode').value=goals.maintenance!==null||goals.base===null?'maintenance':'base';renderProfileCalculation();
   const latest=M.latestWeight(data.profile,data.days,localDate());
   $('profile-weight').value=latest?.weight??'';$('profile-weight-date').value=localDate();
   $('profile-weight-known').textContent=latest?`Dernière pesée : ${fmt(latest.weight)} kg · ${latest.date.split('-').reverse().join('/')}`:'Aucune pesée enregistrée.';
@@ -87,6 +98,10 @@ function saveProfile(){
   if(!$('profile-form').checkValidity()){navigateView('compte');$('profile-form').reportValidity();return false;}
   try{
     const next=structuredClone(data),goals=Object.fromEntries(Object.entries(profileIds).map(([key,id])=>[key,$(id).value===''?null:Number($(id).value)]));
+    if($('profile-mode').value==='maintenance'){
+      goals.base=null;const gap=goals.maintenance===null||goals.plannedIntake===null?null:goals.maintenance-goals.plannedIntake;
+      goals.target=gap!==null&&gap>=0?gap:null;
+    }else goals.maintenance=null;
     if(JSON.stringify(goals)!==JSON.stringify(M.goalsAt(next.profile,localDate())||M.blankGoals())){
       // A new setting applies from today, including any dates planned in the old journal.
       for(const date of Object.keys(next.profile.goals))if(date>localDate())delete next.profile.goals[date];
@@ -141,7 +156,9 @@ function renderSummary() {
   const goals=M.goalsAt(data.profile,selected)||M.blankGoals();
   $('resting-summary').textContent=data.profile.resting===null?'':`Métabolisme de base du profil : ${fmt(data.profile.resting)} kcal/j · au repos`;
   $('resting-summary').hidden=data.profile.resting===null;
-  $('goals-summary').textContent=`Apports : ${fmt(goals.plannedIntake)} kcal · Dépense hors séances : ${fmt(goals.base)} kcal · Déficit cible : ${fmt(goals.target)} kcal`;
+  const average=goals.maintenance!==null;
+  $('goals-summary').textContent=average?`Maintien moyen : ${fmt(goals.maintenance)} kcal/j · Apports prévus : ${fmt(goals.plannedIntake)} kcal/j`:`Apports : ${fmt(goals.plannedIntake)} kcal · Dépense hors séances : ${fmt(goals.base)} kcal · Déficit cible : ${fmt(goals.target)} kcal`;
+  $('activity-calculation').textContent=average?'Ton maintien inclut déjà le sport habituel. Ces séances servent au suivi et ne sont pas ajoutées au bilan. Un total quotidien de la montre remplace cette estimation.':'Les calories actives des séances s’ajoutent à ta dépense hors séances : toutes pour la prévision, les réalisées pour le bilan.';
   const known=M.latestWeight(data.profile,data.days,selected);
   $('known-weight').textContent=known?`Dernier poids connu : ${fmt(known.weight)} kg · pesée du ${known.date.split('-').reverse().join('/')}`:'Poids à renseigner dans ton profil ou dans Suivi.';
   const meals=M.mealSummary(day);$('intake').textContent=fmt(day.intake);
@@ -152,8 +169,8 @@ function renderSummary() {
   $('meal-progress').textContent=intakeMode==='legacy'?'L’ancien total reste utilisé. La répartition est facultative.':`${meals.completed}/4 repas renseignés · ${fmt(meals.total)} kcal${meals.completed < 4 ? ' · total provisoire' : ''}. Saisis 0 pour un repas non pris.`;
   metric('intake-value', day.intake); metric('expenditure-value', b.plannedExpense); metric('planned-value', b.planned); metric('actual-value', b.actual);
   $('intake-detail').textContent = day.plannedIntake === null ? 'Apports prévus non renseignés' : `Apports prévus : ${fmt(day.plannedIntake)} kcal`;
-  $('expenditure-detail').textContent = b.plannedExpense === null ? 'Base ou calories des séances à compléter' : 'Base + toutes les séances du jour';
-  const origin = day.total !== null ? 'Dépense totale saisie' : 'Base + séances réalisées';
+  $('expenditure-detail').textContent = average?'Maintien moyen · sport habituel inclus':b.plannedExpense === null ? 'Base ou calories des séances à compléter' : 'Base + toutes les séances du jour';
+  const origin = day.total !== null ? 'Total quotidien de la montre' : average?'Estimation au maintien moyen':'Base + séances réalisées';
   $('actual-detail').textContent = b.actual === null ? 'Apports ou dépense à compléter' : `${origin}${meals.completed !== null && meals.completed < 4 ? ' · repas incomplets' : ''}${day.target !== null ? ` · cible : ${fmt(day.target)} kcal` : ''}`;
 }
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }
@@ -214,7 +231,7 @@ function renderTrends() {
   });
 }
 document.addEventListener('input',e=>{if(e.target.form===$('day-form'))markDirty();});
-$('profile-form').addEventListener('input',e=>{profileDirty=true;if(['profile-weight','profile-weight-date'].includes(e.target.id))profileWeightDirty=true;$('profile-save-state').textContent='Modifications à enregistrer';});
+$('profile-form').addEventListener('input',e=>{profileDirty=true;if(['profile-weight','profile-weight-date'].includes(e.target.id))profileWeightDirty=true;$('profile-save-state').textContent='Modifications à enregistrer';renderProfileCalculation();});
 $('profile-form').addEventListener('submit',e=>{e.preventDefault();if(dirty&&!save())return;saveProfile();});
 $('day-form').addEventListener('submit',e=>{e.preventDefault();if(save())window.dispatchEvent(new Event('journal-saved'));});
 $('use-meals').onclick=()=>{intakeMode='meals';$('legacy-intake').hidden=true;markDirty();};

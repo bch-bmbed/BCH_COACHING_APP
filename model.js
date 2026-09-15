@@ -15,8 +15,8 @@
   function optionalNumber(value, max, min = 0) {
     return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max);
   }
-  const goalFields = {plannedIntake: 30000, base: 30000, target: 10000};
-  const blankGoals = () => ({plannedIntake:null,base:null,target:null});
+  const goalFields = {plannedIntake: 30000, base: 30000, target: 10000, maintenance:30000};
+  const blankGoals = () => ({plannedIntake:null,base:null,target:null,maintenance:null});
   const blankProfile = () => ({goals:{},weights:{},resting:null});
   function validateProfile(raw) {
     if(!raw || typeof raw!=='object' || !raw.goals || !raw.weights || Array.isArray(raw.goals) || Array.isArray(raw.weights) || typeof raw.goals!=='object' || typeof raw.weights!=='object' || Object.keys(raw.goals).length>20000 || Object.keys(raw.weights).length>20000)throw Error('Profil invalide.');
@@ -27,7 +27,7 @@
       if(!validDate(date) || !raw.goals[date] || typeof raw.goals[date]!=='object')throw Error('Date d’objectif invalide.');
       const goals=blankGoals();
       for(const [key,max] of Object.entries(goalFields)){
-        const value=raw.goals[date][key];
+        const value=key==='maintenance'?(raw.goals[date][key]??null):raw.goals[date][key];
         if(!optionalNumber(value,max))throw Error('Objectif invalide : '+key);
         goals[key]=value;
       }result.goals[date]=goals;
@@ -41,13 +41,13 @@
     const profile=blankProfile();
     for(const date of Object.keys(days).sort()){
       const day=days[date];
-      profile.goals[date]=Object.fromEntries(Object.keys(goalFields).map(key=>[key,day[key]]));
+      profile.goals[date]=Object.fromEntries(Object.keys(goalFields).map(key=>[key,day[key]??null]));
       if(day.weight!==null)profile.weights[date]=day.weight;
     }return validateProfile(profile);
   }
   function goalsAt(profile,date) {
     const from=Object.keys(profile.goals).filter(d=>d<=date).sort().at(-1);
-    return from?structuredClone(profile.goals[from]):null;
+    return from?{...blankGoals(),...structuredClone(profile.goals[from])}:null;
   }
   function effectiveDay(day,profile,date) {
     return {...(day||blankDay()),...(goalsAt(profile,date)||{})};
@@ -104,10 +104,12 @@
     return activities.some(a => a.kcal === null) ? null : activities.reduce((sum, a) => sum + a.kcal, 0);
   }
   function balance(day) {
+    // Maintenance already includes the usual activity averaged across the week.
+    const maintenance=day.maintenance??null;
     const plannedSport = sumCalories(day.activities);
     const doneSport = sumCalories(day.activities.filter(a => a.state === 'done'));
-    const plannedExpense = day.base === null || plannedSport === null ? null : day.base + plannedSport;
-    const actualExpense = day.total !== null ? day.total : day.base === null || doneSport === null ? null : day.base + doneSport;
+    const plannedExpense = maintenance!==null?maintenance:day.base === null || plannedSport === null ? null : day.base + plannedSport;
+    const actualExpense = day.total !== null ? day.total : maintenance!==null?maintenance:day.base === null || doneSport === null ? null : day.base + doneSport;
     const intake = day.intakeMode === 'meals' ? mealSummary(day).total : day.intake;
     return {plannedExpense, actualExpense, planned: plannedExpense === null || day.plannedIntake === null ? null : plannedExpense - day.plannedIntake, actual: actualExpense === null || intake === null ? null : actualExpense - intake};
   }

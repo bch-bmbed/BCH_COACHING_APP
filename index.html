@@ -4,8 +4,8 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#142c3a"><meta name="description" content="Journal personnel des apports, activités, bilans énergétiques et pesées.">
   <title>Équilibre · Mon journal</title>
-  <link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=5">
-  <script defer src="model.js?v=5"></script><script defer src="sync-model.js?v=5"></script><script defer src="config.js?v=2"></script><script defer src="app.js?v=5"></script><script defer src="cloud.js?v=5"></script>
+  <link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css?v=6">
+  <script defer src="model.js?v=6"></script><script defer src="sync-model.js?v=6"></script><script defer src="config.js?v=2"></script><script defer src="app.js?v=6"></script><script defer src="cloud.js?v=6"></script>
 </head>
 <body>
 <header class="app-header"><a class="brand" href="#bilan"><span class="brand-icon">é.</span> équilibre<span class="brand-sub">MON SUIVI PERSONNEL</span></a><nav class="app-nav" aria-label="Navigation principale"><a href="#bilan" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10"/></svg><span>Bilan</span></a><a href="#repas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v6m3-6v6M2 3v6c0 3 6 3 6 0M5 12v9M19 3c-4 0-5 5-5 9h5m0-9v18"/></svg><span>Repas</span></a><a href="#activites"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>Activités</span></a><a href="#tendances"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v17h17M8 14l4-5 4 3 5-7"/></svg><span>Suivi</span></a><a href="#compte"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg><span>Compte</span></a></nav><a class="storage-label" id="cloud-badge" href="#compte">Sur cet appareil</a></header>
@@ -25,7 +25,7 @@
 
     <div class="quick-links"><a href="#repas"><span><strong>Mes repas</strong><small id="overview-meals">0/4 renseignés</small></span><span aria-hidden="true">→</span></a><a href="#activites"><span><strong>Mes activités</strong><small id="overview-activities">0 séance</small></span><span aria-hidden="true">→</span></a></div>
     <div class="panel profile-summary"><div><h2>Mes repères habituels</h2><p id="resting-summary" class="muted" hidden></p><p id="goals-summary" class="hint"></p><p id="known-weight" class="muted"></p></div><a href="#compte" class="profile-link">Modifier mon profil →</a></div>
-    <details class="panel settings-panel" id="day-settings"><summary><span><strong>Dépense mesurée du jour</strong><small>Si ta montre indique un total quotidien</small></span></summary><div class="details-body"><label>Dépense totale mesurée <span>kcal · facultatif</span><input form="day-form" id="total" type="number" min="0" max="30000" step="1" placeholder="Total du jour indiqué par ta montre"></label><p class="hint">Cette mesure remplace la dépense habituelle + les séances réalisées pour le bilan de cette journée.</p></div></details>
+    <details class="panel settings-panel" id="day-settings"><summary><span><strong>Dépense mesurée du jour</strong><small>Si ta montre indique un total quotidien</small></span></summary><div class="details-body"><label>Dépense totale mesurée <span>kcal · facultatif</span><input form="day-form" id="total" type="number" min="0" max="30000" step="1" placeholder="Total du jour indiqué par ta montre"></label><p class="hint">Cette mesure remplace entièrement l’estimation du profil pour cette journée. Les calories des séances ne sont pas ajoutées au total de la montre.</p></div></details>
   </section>
   <section id="repas" class="app-view" aria-labelledby="repas-title" hidden>
     <div class="section-heading"><div><p class="eyebrow">AU FIL DES REPAS</p><h1 id="repas-title" tabindex="-1">Mes quatre repas</h1></div><div class="intake-total"><span>Total consommé</span><strong><output id="intake">—</output> <small>kcal</small></strong></div></div>
@@ -35,7 +35,7 @@
   </section>
   <section id="activites" class="app-view" aria-labelledby="activites-title" hidden>
     <div class="section-heading"><div><p class="eyebrow">UN PEU DE MOUVEMENT</p><h1 id="activites-title" tabindex="-1">Mes activités</h1></div></div>
-      <div class="panel activity-panel">
+      <p id="activity-calculation" class="hint"></p><div class="panel activity-panel">
         <div class="panel-heading"><h2>Séances du jour</h2><span id="activity-count" class="pill">0 séance</span></div>
         <div id="activities" class="activity-list"></div>
         <form id="activity-form"><h2>Ajouter une activité</h2>
@@ -61,8 +61,14 @@
       <div class="panel-heading"><h2>Mon profil & mes objectifs</h2><span id="profile-scope" class="pill">Sur cet appareil</span></div>
       <p class="hint">Ces repères servent chaque jour, jusqu’à leur prochaine modification. Un changement prend effet aujourd’hui ; tes anciens bilans sont conservés.</p>
       <div class="metabolism-reference"><label>Métabolisme de base estimé <span>kcal / jour · au repos</span><input id="profile-resting" type="number" min="1" max="20000" step="1" placeholder="Estimation de ton suivi nutritionnel"></label><p class="hint">Une référence fixe, à actualiser lors de ton suivi nutritionnel. Elle reste identique lorsque tu ajoutes une pesée.</p></div>
-      <div class="fields profile-goals"><label>Apports habituels prévus <span>kcal / jour</span><input id="profile-intake" type="number" min="0" max="30000" step="1" placeholder="À renseigner"></label><label>Dépense totale hors séances <span>kcal / jour</span><input id="profile-base" type="number" min="0" max="30000" step="1" placeholder="Ton estimation"></label><label>Déficit cible habituel <span>kcal / jour</span><input id="profile-target" type="number" min="0" max="10000" step="1" placeholder="Facultatif"></label></div>
-      <p class="hint">La dépense hors séances comprend déjà le métabolisme de base, la digestion et les mouvements du quotidien. C’est elle qui sert au bilan, en ajoutant les séances. Le métabolisme de base seul ne suffit pas à estimer ta dépense totale.</p>
+      <label class="profile-mode-label">Référence pour la dépense<select id="profile-mode"><option value="maintenance">Maintien calorique moyen · sport habituel inclus</option><option value="base">Dépense hors séances + activités du journal</option></select></label>
+      <div id="profile-goal-fields" class="fields profile-goals">
+        <label id="profile-maintenance-field">Maintien calorique estimé <span>kcal / jour · moyenne</span><input id="profile-maintenance" type="number" min="0" max="30000" step="1" placeholder="Estimation de ton suivi nutritionnel"></label>
+        <label>Objectif d’apports <span>kcal / jour</span><input id="profile-intake" type="number" min="0" max="30000" step="1" placeholder="À renseigner"></label>
+        <label id="profile-base-field">Dépense hors séances <span>kcal / jour</span><input id="profile-base" type="number" min="0" max="30000" step="1" placeholder="Ton estimation"></label>
+        <label id="profile-target-field">Déficit visé <span>kcal / jour</span><input id="profile-target" type="number" min="0" max="10000" step="1" placeholder="Facultatif"></label>
+      </div>
+      <p id="profile-calculation" class="profile-projection" role="status"></p><p id="profile-energy-help" class="hint"></p>
       <h3>Mon dernier poids connu</h3><p class="hint">Il reste la référence jusqu’à une nouvelle pesée. Tu peux l’actualiser ici ou dans Suivi.</p><p id="profile-weight-known" class="muted"></p>
       <div class="fields profile-weight-fields"><label>Poids <span>kg · facultatif</span><input id="profile-weight" type="number" min="1" max="600" step="0.01" placeholder="À renseigner"></label><label>Date de la pesée<input id="profile-weight-date" type="date" required></label></div>
       <div class="profile-actions"><button class="primary" type="submit">Enregistrer mon profil</button><span id="profile-save-state" class="muted" role="status"></span></div>

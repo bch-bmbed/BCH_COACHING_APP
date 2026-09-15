@@ -16,13 +16,16 @@ Dashboard statique sur GitHub Pages, avec journal local et synchronisation priv�
 
 ## Calculs
 
-Déficit prévu = dépense hors séances + calories de toutes les séances (prévues et réalisées) − apports prévus.
+Deux références sont disponibles dans le profil, avec une date d’effet pour conserver les anciens bilans :
 
-Bilan estimé = dépense hors séances + calories des séances réalisées − apports consommés.
+- **Maintien calorique moyen** : dépense totale estimée comprenant déjà le repos, la digestion, les mouvements et le sport habituels, lissée sur la semaine. Déficit prévu = maintien − apports prévus. Bilan estimé = maintien − apports consommés. Les séances restent suivies, mais ne sont pas ajoutées au maintien. Le déficit du profil est calculé depuis le maintien et les apports, sans troisième saisie redondante.
+- **Dépense hors séances + activités** : méthode historique, pour les personnes disposant d’une estimation excluant les séances du journal. Déficit prévu = base hors séances + toutes les séances − apports prévus. Bilan estimé = base + séances réalisées − apports consommés. Les calories des séances sont les calories actives additionnelles, hors repos.
 
-Si la dépense totale de la montre est renseignée, elle remplace intégralement la dépense du bilan estimé. Ne pas ajouter le total d'une montre comme une séance. Une valeur manquante reste inconnue ; le zéro doit être saisi explicitement. Les calories des séances doivent être les calories actives additionnelles, hors repos déjà compté dans la base. Un résultat positif est un déficit, un résultat négatif est un surplus. Le déficit cible est informatif, sans prescription ni conversion en kilos.
+Si la dépense quotidienne totale de la montre est renseignée, elle remplace entièrement la dépense du bilan estimé dans les deux modes. Ne pas saisir ce total comme une séance. Une donnée manquante reste inconnue ; le zéro doit être saisi explicitement. En mode maintien, une activité sans calories ne bloque pas le bilan puisque sa dépense est déjà comprise dans la moyenne. Un résultat positif est un déficit, un résultat négatif est un surplus.
 
-Les valeurs d'une journée ne modifient pas les journées précédentes. La prévision est recalculée depuis la liste courante des séances : il ne s'agit pas d'un instantané immuable du plan initial. Les graphiques affichent uniquement les journées enregistrées, jusqu'à la date sélectionnée.
+Le maintien est une hypothèse de travail, pas une mesure quotidienne : il faut le réévaluer si l’activité habituelle change, et le confronter aux tendances de pesées sur plusieurs semaines. La dépense varie entre jours de repos et d’entraînement. Aucune conversion automatique du déficit en kilos n’est effectuée.
+
+Les changements de profil prennent effet aujourd’hui. Les anciens modes et valeurs restent disponibles dans l’historique. Le métabolisme au repos est une référence informative ; il ne s’ajoute ni au maintien ni à la base hors séances. La synchronisation traite le montant et le sens de la dépense comme un seul choix pour éviter une fusion incohérente entre deux appareils.
 
 ## Données et limites
 
@@ -48,7 +51,7 @@ Documentation : https://docs.github.com/en/pages/getting-started-with-github-pag
 
 Projet Supabase : `yuzvnyecrtcvzmxnlhfd`, région Paris (`eu-west-3`). Le fichier `config.js` contient exclusivement l'URL et la clé publique, jamais de clé `service_role` ou secrète.
 
-1. Appliquer dans l’ordre `supabase/migrations/001_journal.sql` puis `supabase/migrations/20260915133026_account_profile.sql` et `supabase/migrations/20260915135813_resting_metabolism.sql`, une seule fois chacune. Les deux tables possèdent RLS, aucun accès anonyme, et des fonctions de sauvegarde vérifiant la révision. La seconde migration reprend les objectifs et pesées des journées existantes sans modifier les repas ni activités. La troisième valide le champ facultatif de métabolisme et le conserve lors des écritures provenant d’un ancien onglet qui ne le connaît pas.
+1. Appliquer dans l’ordre `supabase/migrations/001_journal.sql` puis `supabase/migrations/20260915133026_account_profile.sql` puis `supabase/migrations/20260915135813_resting_metabolism.sql` et `supabase/migrations/20260915143056_maintenance_calorie_reference.sql`, une seule fois chacune. Les deux tables possèdent RLS, aucun accès anonyme, et des fonctions de sauvegarde vérifiant la révision. La seconde migration reprend les objectifs et pesées des journées existantes sans modifier les repas ni activités. La troisième valide le champ facultatif de métabolisme et le conserve lors des écritures provenant d’un ancien onglet qui ne le connaît pas. La quatrième demande de recharger les anciens onglets avant de modifier un profil utilisant le maintien, pour éviter d’en perdre le sens.
 2. Dans **Authentication → URL Configuration**, définir **Site URL** sur `https://bch-bmbed.github.io/BCH_COACHING_APP/` et autoriser exactement cette même URL dans **Redirect URLs**.
 3. Authentification par lien e-mail. Le service e-mail par défaut de Supabase n'envoie qu'aux adresses autorisées de l'équipe du projet ; pour ce suivi personnel, utiliser l'adresse du compte Supabase propriétaire. Pour d'autres adresses, configurer un SMTP adapté avant d'ouvrir l'accès. Aucun SMTP payant n'est prévu ici.
 4. Ouvrir le dashboard, demander un lien puis l'ouvrir sur le même appareil. Répéter sur le deuxième appareil avec la même adresse. Les comptes de la plateforme Supabase et les utilisateurs de l'application sont distincts : le premier lien crée l'utilisateur du journal.
@@ -83,7 +86,7 @@ Sources officielles consultées le 15 septembre 2026 :
 
 ## Vérification
 
-Exécuter `node --test tests/*.test.cjs` : 36 tests de calculs, migration, historique des objectifs, pesées, sauvegardes, fusion, deux clients simulés, conflits de révision et coupure réseau. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
+Exécuter `node --test tests/*.test.cjs` : 40 tests de calculs, migration, historique des objectifs, pesées, sauvegardes, fusion, deux clients simulés, conflits de révision et coupure réseau. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
 
 Navigation vérifiée dans le navigateur aux largeurs 320, 390 et 1280 px : une seule vue visible, aucun débordement horizontal, saisie répartie sur plusieurs onglets puis enregistrement, correction d’un champ invalide dans un panneau masqué, ajout d’activité, rechargement des repas/notes/pesée, retour et avance du navigateur, lien historique de connexion `#sync`. Les données de ces essais restent dans le stockage local de la prévisualisation.
 

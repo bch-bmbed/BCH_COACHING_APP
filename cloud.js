@@ -4,7 +4,7 @@
   const $=id=>document.getElementById(id);
   let client=null, account=null, generation=0, running=false, timer=null, pending=new Map();
   function status(label,message){$('sync-state').textContent=label;$('cloud-badge').textContent=label;if(message)$('sync-message').textContent=message;}
-  const valueText=value=>value === undefined?'Supprimée':value === null?'Non renseigné':typeof value==='object'?`${value.name} · ${value.minutes} min · ${value.kcal??'?'} kcal · ${value.state==='done'?'réalisée':'prévue'}`:String(value);
+  const valueText=value=>value === undefined?'Supprimée':value === null?'Non renseigné':typeof value==='object'&&Object.hasOwn(value,'maintenance')?(value.maintenance!==null?`Maintien moyen : ${value.maintenance} kcal/j`:`Dépense hors séances : ${value.base??'non renseignée'} kcal/j`):typeof value==='object'?`${value.name} · ${value.minutes} min · ${value.kcal??'?'} kcal · ${value.state==='done'?'réalisée':'prévue'}`:String(value);
   function paintConflicts(){
     const box=$('conflict-items');box.replaceChildren();$('conflicts').hidden=pending.size===0;
     for(const [date,item] of pending){

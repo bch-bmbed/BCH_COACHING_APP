@@ -34,7 +34,7 @@
     if(key==='profile.resting')return 'Métabolisme de base estimé';
     if(key.startsWith('profile.goals.')){const [, ,date,field]=key.split('.');return `Objectif du ${date} · ${label(field)}`;}
     if(key.startsWith('profile.weights.'))return 'Pesée du '+key.slice('profile.weights.'.length);
-    const titles={plannedIntake:'Apports prévus',base:'Dépense hors séances',target:'Déficit cible',total:'Dépense totale',weight:'Pesée',note:'Note du jour',intakeMode:'Mode de saisie des apports',legacyIntake:'Ancien total consommé'};
+    const titles={expense:'Référence de dépense',maintenance:'Maintien calorique moyen',plannedIntake:'Apports prévus',base:'Dépense hors séances',target:'Déficit cible',total:'Dépense totale',weight:'Pesée',note:'Note du jour',intakeMode:'Mode de saisie des apports',legacyIntake:'Ancien total consommé'};
     if(key.startsWith('meals.')) { const [,meal,field]=key.split('.');return `${M.mealNames[meal]} · ${field === 'kcal' ? 'calories' : 'recettes / note'}`; }
     return key.startsWith('activity.') ? 'Activité' : titles[key] || key;
   }
@@ -54,7 +54,10 @@
       if(!Object.hasOwn(b.goals,date) && !Object.hasOwn(l.goals,date)){result.goals[date]=copy(r.goals[date]);continue;}
       if(!Object.hasOwn(b.goals,date) && !Object.hasOwn(r.goals,date)){result.goals[date]=copy(l.goals[date]);continue;}
       const bg=M.goalsAt(b,date)||M.blankGoals(),lg=M.goalsAt(l,date)||M.blankGoals(),rg=M.goalsAt(r,date)||M.blankGoals();
-      result.goals[date]=Object.fromEntries(Object.keys(M.goalFields).map(key=>[key,merge('profile.goals.'+date+'.'+key,bg[key],lg[key],rg[key])]));
+      // The amount and its meaning change together: a total maintenance is not a base excluding sport.
+      const expense=g=>({base:g.base,maintenance:g.maintenance});
+      const mergedExpense=merge('profile.goals.'+date+'.expense',expense(bg),expense(lg),expense(rg));
+      result.goals[date]={...Object.fromEntries(['plannedIntake','target'].map(key=>[key,merge('profile.goals.'+date+'.'+key,bg[key],lg[key],rg[key])])),...mergedExpense};
     }
     for(const date of new Set([...Object.keys(b.weights),...Object.keys(l.weights),...Object.keys(r.weights)])){
       const value=merge('profile.weights.'+date,b.weights[date],l.weights[date],r.weights[date]);

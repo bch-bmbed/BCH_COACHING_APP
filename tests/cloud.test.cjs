@@ -78,3 +78,10 @@ test('une erreur serveur du profil ne confirme pas une synchronisation et conser
   const server={rows:new Map(),profileError:{message:'Indisponible'}},pc=await device(server);pc.editProfile(p=>p.weights[date]=80);
   await pc.sync();assert.equal(pc.status(),'Non synchronisé');assert.equal(pc.snapshot().profile.weights[date],80);assert.equal(server.rows.size,0);
 });
+
+test('un maintien de compte passe du PC au téléphone sans doubler une activité',async()=>{
+  const server={rows:new Map()},pc=await device(server),phone=await device(server);
+  pc.editProfile(p=>p.goals[date]={plannedIntake:2400,base:null,target:350,maintenance:2750});await pc.sync();await phone.sync();
+  phone.edit(d=>{d.meals.lunch.kcal=2400;d.activities.push({id:'a',name:'Sport',minutes:40,kcal:350,state:'done',source:'manual'});});await phone.sync();await pc.sync();
+  assert.deepEqual(pc.snapshot(),phone.snapshot());assert.equal(M.balance(M.effectiveDay(pc.snapshot().days[date],pc.snapshot().profile,date)).actual,350);
+});
