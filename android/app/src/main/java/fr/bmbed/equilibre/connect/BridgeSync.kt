@@ -5,6 +5,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.json.JSONArray
 import java.net.HttpURLConnection
@@ -13,8 +15,10 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 object BridgeSync {
-    suspend fun send(context: Context,days: Int) = withContext(Dispatchers.IO) {
+    private val mutex=Mutex()
+    suspend fun send(context: Context,days: Int): String = mutex.withLock { withContext(Dispatchers.IO) {
         val vault=Vault(context);val parts=(vault.code() ?: error("Associe ce téléphone depuis le dashboard.")).split('.')
+        vault.syncStarted()
         val snapshots=HealthReader(context).snapshots(days)
         var sessionCount=0
         for(index in 0 until snapshots.length()) {
@@ -32,17 +36,21 @@ object BridgeSync {
         }finally { connection.disconnect() }
         }
         val permission=snapshots.getJSONObject(snapshots.length()-1).getJSONObject("permissions").getBoolean("sessions")
-        "Synchronisé à ${ZonedDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))} · $days journées · $sessionCount enregistrements de séances, avant regroupement.${if(!permission) " Autorisation Séances absente : actualise les autorisations." else " Toutes les sources disponibles ont été lues."}".also { vault.status=it }
-    }
+        val today=snapshots.getJSONObject(snapshots.length()-1).getJSONArray("sessions")
+        val known=(0 until today.length()).count { val s=today.getJSONObject(it);!s.isNull("activeKcal")||!s.isNull("totalKcal") }
+        "Synchronisé le ${ZonedDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM à HH:mm"))} · $days journées · $sessionCount enregistrements de séances, avant regroupement. Aujourd’hui : ${today.length()} séance(s), $known avec des calories.${if(!permission) " Autorisation Séances absente : actualise les autorisations." else " Toutes les sources disponibles ont été lues."}".also { vault.syncSucceeded(it) }
+    } }
 }
 class SyncWorker(context: Context,parameters: WorkerParameters): CoroutineWorker(context,parameters) {
     override suspend fun doWork(): Result {
-        val vault=Vault(applicationContext);if(!vault.automatic)return Result.success()
+        val vault=Vault(applicationContext);val manual=inputData.getBoolean("manual",false)
+        if(!manual&&!vault.automatic)return Result.success()
         return try {
-            if(!HealthReader(applicationContext).client.permissionController.getGrantedPermissions().contains(HealthReader.background)) {
-                vault.status="Synchronisation manuelle : autorisation en arrière-plan absente.";return Result.success()
+            if(!manual&&!HealthReader(applicationContext).client.permissionController.getGrantedPermissions().contains(HealthReader.background)) {
+                vault.syncFailed("Automatisation suspendue : autorisation en arrière-plan absente.");return Result.failure()
             }
-            BridgeSync.send(applicationContext,3);Result.success()
-        }catch(e: Exception){vault.status=e.message ?: "Synchronisation en attente.";if(runAttemptCount<3)Result.retry() else Result.failure()}
+            BridgeSync.send(applicationContext,if(manual)14 else 3);Result.success()
+        }catch(e: kotlinx.coroutines.CancellationException){throw e}
+        catch(e: Exception){vault.syncFailed(e.message ?: "Synchronisation impossible.");if(!manual&&runAttemptCount<3)Result.retry() else Result.failure()}
     }
 }

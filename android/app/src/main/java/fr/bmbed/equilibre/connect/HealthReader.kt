@@ -17,6 +17,7 @@ import java.time.Duration
 
 class HealthReader(context: Context) {
     val client = HealthConnectClient.getOrCreate(context)
+    private val bridgeVersion=context.packageManager.getPackageInfo(context.packageName,0).longVersionCode.toInt()
     companion object {
         val totalPermission=HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
         val sessionPermission=HealthPermission.getReadPermission(ExerciseSessionRecord::class)
@@ -77,14 +78,14 @@ class HealthReader(context: Context) {
             val sessionJson=JSONArray()
             for(s in daySessions) {
                 val window=s.startTime to s.endTime
-                val ownTotals=totals.filter { it.metadata.dataOrigin==s.metadata.dataOrigin }.map { EnergyInterval(it.startTime,it.endTime,it.energy.inKilocalories,it.metadata.lastModifiedTime) }
+                val ownTotals=totals.filter { it.metadata.dataOrigin.packageName==s.metadata.dataOrigin.packageName }.map { EnergyInterval(it.startTime,it.endTime,it.energy.inKilocalories,it.metadata.lastModifiedTime) }
                 val sessionTotal=EnergyIntervals.sessionTotal(s.startTime,s.endTime,ownTotals)
                 if(activePermission in granted&&!caloriesCache.containsKey(window))caloriesCache[window]=client.aggregate(AggregateRequest(setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL),TimeRangeFilter.between(s.startTime,s.endTime)))[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
                 sessionJson.put(JSONObject().put("id",s.metadata.id).put("clientId",s.metadata.clientRecordId?.takeIf { it.isNotBlank()&&it.length<=200 } ?: JSONObject.NULL).put("source",s.metadata.dataOrigin.packageName).put("modifiedAt",s.metadata.lastModifiedTime.toString()).put("start",s.startTime.toString()).put("end",s.endTime.toString()).put("type",s.exerciseType).put("kind",kind(s.exerciseType)).put("title",s.title?.take(160) ?: "").put("activeKcal",caloriesCache[window] ?: JSONObject.NULL).put("totalKcal",sessionTotal ?: JSONObject.NULL))
             }
             val origins=(totals.filter { it.startTime<until&&it.endTime>start }.map { it.metadata.dataOrigin.packageName }+daySessions.map { it.metadata.dataOrigin.packageName }+(stepsResult?.dataOrigins?.map { it.packageName } ?: emptyList())).distinct().sorted()
             val permissions=JSONObject().put("total",totalPermission in granted).put("steps",stepsPermission in granted).put("sessions",sessionPermission in granted).put("activeCalories",activePermission in granted)
-            result.put(JSONObject().put("version",2).put("day",day.toString()).put("source","health-connect").put("sources",JSONArray(origins)).put("permissions",permissions).put("sessions",sessionJson).put("zone",zone.id).put("capturedAt",now.toString()).put("start",start.toString()).put("end",end.toString()).put("bins",bins).put("steps",stepsResult?.get(StepsRecord.COUNT_TOTAL) ?: JSONObject.NULL))
+            result.put(JSONObject().put("version",2).put("bridgeVersion",bridgeVersion).put("day",day.toString()).put("source","health-connect").put("sources",JSONArray(origins)).put("permissions",permissions).put("sessions",sessionJson).put("zone",zone.id).put("capturedAt",now.toString()).put("start",start.toString()).put("end",end.toString()).put("bins",bins).put("steps",stepsResult?.get(StepsRecord.COUNT_TOTAL) ?: JSONObject.NULL))
         }
         return result
     }

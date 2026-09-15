@@ -23,6 +23,7 @@ class Vault(context: Context) {
         require(Regex("EQ1\\.[0-9a-f-]{36}\\.[0-9a-f]{64}").matches(value)) { "Code invalide. Copie le code complet depuis Compte → Santé Connect." }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         prefs.edit().putString("code", Base64.encodeToString(cipher.iv + cipher.doFinal(value.toByteArray()), Base64.NO_WRAP)).apply()
+        prefs.edit().remove("lastSuccess").remove("lastSummary").remove("lastError").remove("syncOutcome").apply()
     }
     fun code(): String? {
         val encoded = prefs.getString("code", null) ?: return null
@@ -39,5 +40,17 @@ class Vault(context: Context) {
     var automatic: Boolean
         get() = prefs.getBoolean("automatic", false)
         set(value) { prefs.edit().putBoolean("automatic", value).apply() }
+    val lastSuccess: Long get() = prefs.getLong("lastSuccess",0)
+    val lastSummary: String get() = prefs.getString("lastSummary","") ?: ""
+    val lastError: String get() = prefs.getString("lastError","") ?: ""
+    val syncOutcome: String get() = prefs.getString("syncOutcome","") ?: ""
+    fun syncStarted() { prefs.edit().putString("syncOutcome","running").remove("lastError").apply() }
+    fun syncSucceeded(summary: String) {
+        prefs.edit().putLong("lastSuccess",System.currentTimeMillis()).putString("lastSummary",summary)
+            .putString("syncOutcome","success").putString("status",summary).remove("lastError").apply()
+    }
+    fun syncFailed(message: String) {
+        prefs.edit().putString("syncOutcome","error").putString("lastError",message).putString("status",message).apply()
+    }
     fun forget() { prefs.edit().clear().apply() }
 }
