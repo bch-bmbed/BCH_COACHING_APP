@@ -6,6 +6,12 @@ import java.time.Instant
 
 class EnergyIntervalsTest {
     private val start=Instant.parse("2026-01-01T00:00:00Z")
+    @Test fun sessionTotalRequiresCoverageAndRejectsDailyProrating() {
+        val end=start.plusSeconds(1800)
+        assertEquals(150.0,EnergyIntervals.sessionTotal(start,end,listOf(EnergyInterval(start,end,150.0,start)))!!,0.01)
+        assertNull(EnergyIntervals.sessionTotal(start,end,listOf(EnergyInterval(start,end.minusSeconds(60),150.0,start))))
+        assertNull(EnergyIntervals.sessionTotal(start,end,listOf(EnergyInterval(start,start.plusSeconds(86400),2400.0,start))))
+    }
     @Test fun missingIsUnknown() { val b=EnergyIntervals.bin(start,start.plusSeconds(3600),emptyList());assertNull(b.total);assertEquals(0.0,b.covered,0.01) }
     @Test fun correctionsDoNotDoubleCount() {
         val first=EnergyInterval(start,start.plusSeconds(3600),100.0,start)

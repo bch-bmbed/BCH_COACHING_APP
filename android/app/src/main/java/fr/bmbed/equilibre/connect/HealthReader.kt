@@ -77,8 +77,10 @@ class HealthReader(context: Context) {
             val sessionJson=JSONArray()
             for(s in daySessions) {
                 val window=s.startTime to s.endTime
+                val ownTotals=totals.filter { it.metadata.dataOrigin==s.metadata.dataOrigin }.map { EnergyInterval(it.startTime,it.endTime,it.energy.inKilocalories,it.metadata.lastModifiedTime) }
+                val sessionTotal=EnergyIntervals.sessionTotal(s.startTime,s.endTime,ownTotals)
                 if(activePermission in granted&&!caloriesCache.containsKey(window))caloriesCache[window]=client.aggregate(AggregateRequest(setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL),TimeRangeFilter.between(s.startTime,s.endTime)))[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
-                sessionJson.put(JSONObject().put("id",s.metadata.id).put("clientId",s.metadata.clientRecordId?.takeIf { it.isNotBlank()&&it.length<=200 } ?: JSONObject.NULL).put("source",s.metadata.dataOrigin.packageName).put("modifiedAt",s.metadata.lastModifiedTime.toString()).put("start",s.startTime.toString()).put("end",s.endTime.toString()).put("type",s.exerciseType).put("kind",kind(s.exerciseType)).put("title",s.title?.take(160) ?: "").put("activeKcal",caloriesCache[window] ?: JSONObject.NULL))
+                sessionJson.put(JSONObject().put("id",s.metadata.id).put("clientId",s.metadata.clientRecordId?.takeIf { it.isNotBlank()&&it.length<=200 } ?: JSONObject.NULL).put("source",s.metadata.dataOrigin.packageName).put("modifiedAt",s.metadata.lastModifiedTime.toString()).put("start",s.startTime.toString()).put("end",s.endTime.toString()).put("type",s.exerciseType).put("kind",kind(s.exerciseType)).put("title",s.title?.take(160) ?: "").put("activeKcal",caloriesCache[window] ?: JSONObject.NULL).put("totalKcal",sessionTotal ?: JSONObject.NULL))
             }
             val origins=(totals.filter { it.startTime<until&&it.endTime>start }.map { it.metadata.dataOrigin.packageName }+daySessions.map { it.metadata.dataOrigin.packageName }+(stepsResult?.dataOrigins?.map { it.packageName } ?: emptyList())).distinct().sorted()
             val permissions=JSONObject().put("total",totalPermission in granted).put("steps",stepsPermission in granted).put("sessions",sessionPermission in granted).put("activeCalories",activePermission in granted)

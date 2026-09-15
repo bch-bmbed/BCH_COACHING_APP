@@ -5,6 +5,14 @@ import java.time.Instant
 data class EnergyInterval(val start: Instant, val end: Instant, val kcal: Double, val modified: Instant)
 data class EnergyBin(val start: Instant, val end: Instant, val total: Double?, val covered: Double, val maxRecordSeconds: Double)
 object EnergyIntervals {
+    fun sessionTotal(start: Instant,end: Instant,records: List<EnergyInterval>): Double? {
+        val seconds=(end.toEpochMilli()-start.toEpochMilli())/1000.0
+        if(seconds<=0)return null
+        // A daily total spread across hours cannot substitute for a session total.
+        val candidates=records.filter { (it.end.toEpochMilli()-it.start.toEpochMilli())/1000.0<=seconds*1.2 }
+        val result=bin(start,end,candidates)
+        return if(result.covered>=seconds-1)result.total else null
+    }
     fun coverage(start: Instant,end: Instant,records: List<EnergyInterval>): EnergyBin {
         val relevant=records.filter { it.start<end&&it.end>start&&it.end>it.start }
         // Aggregation may use a different source priority from lastModifiedTime.
