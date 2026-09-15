@@ -12,7 +12,7 @@
     $('balance-food-status').textContent=p.remaining===null?'Repas ou objectif à renseigner':p.remaining>0?`${fmt(p.remaining)} kcal avant l’objectif`:p.remaining<0?`${fmt(-p.remaining)} kcal au-dessus de l’objectif`:'Objectif alimentaire atteint';
     $('balance-activity-title').textContent=a.source==='manual'?'Activités saisies':'Séances synchronisées';
     $('balance-active-value').textContent=(a.estimated&&a.kcal!==null?'≈ ':'')+fmt(a.kcal);
-    $('balance-active-unit').textContent='kcal actives';
+    $('balance-active-unit').textContent=a.unclassified?'kcal de séances':'kcal actives';
     $('balance-active-bar').style.width=(p.activityRatio===null?0:p.activityRatio*100)+'%';
     $('balance-active-track').classList.toggle('no-value',p.activityRatio===null);
     $('balance-active-share').textContent=p.inconsistent?'Total de dépense à vérifier':p.activityRatio===null?'Part dans la dépense : à compléter':`≈ ${fmt(p.activityRatio*100)} % des ${fmt(expense)} kcal de dépense retenue`;
@@ -20,7 +20,9 @@
     const notes=[];
     if(completed!==null&&completed<4)notes.push(`${completed}/4 repas renseignés : progression provisoire.`);
     if(a.missing)notes.push('Le total des activités reste incomplet.');
-    if(a.estimated)notes.push('≈ : calories actives estimées depuis le total de séance, après retrait du repos, ou créneaux qui se chevauchent.');
+    if(a.unclassified)notes.push('Urevo : valeurs conservées sans retrait du repos, nature à confirmer. Repère théorique de marche dans Activités.');
+    if(a.restAdjusted)notes.push('≈ : calories actives estimées après retrait du repos pour les autres sources.');
+    if(a.overlap)notes.push('≈ : créneaux qui se chevauchent, comptés une seule fois.');
     if(a.manualCount)notes.push(`${a.manualCount} saisie(s) manuelle(s) conservée(s) séparément pour éviter les copies.`);
     $('balance-visual-note').textContent=notes.join(' ');$('balance-visual-note').hidden=!notes.length;
     const text=a.source==='manual'?'Le calcul du bilan suit la méthode de ton profil.':'Ces calories détaillent les séances ; elles ne sont pas ajoutées à nouveau à la dépense du jour.';

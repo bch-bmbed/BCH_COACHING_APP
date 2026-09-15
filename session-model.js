@@ -29,22 +29,32 @@
       return {...representative,title:representative.title||labels[representative.kind],activeKcal:ordered.find(s=>s.activeKcal!==null)?.activeKcal??null,members,sources:[...new Set(members.map(s=>s.source))],copies:members.length-1,ambiguous:groups.some(other=>other!==members&&other.some(a=>members.some(b=>a.source!==b.source&&sameWindow(a,b))))};
     });
   }
+  const isUnclassifiedSource=source=>source==='com.urevo.app';
   function energy(session,resting){
     const members=session.members||[session],direct=members.find(s=>s.activeKcal!==null&&s.activeKcal!==undefined);
-    if(direct)return {kcal:direct.activeKcal,estimated:false,start:direct.start,end:direct.end};
+    if(direct)return {kcal:direct.activeKcal,estimated:false,basis:'active',start:direct.start,end:direct.end};
+    // Urevo writes into the total field, but its inclusion of resting energy is unconfirmed.
+    const unclassified=members.find(s=>isUnclassifiedSource(s.source)&&s.totalKcal!==null&&s.totalKcal!==undefined);
+    if(unclassified)return {kcal:unclassified.totalKcal,estimated:false,basis:'source',start:unclassified.start,end:unclassified.end};
     const gross=members.find(s=>s.totalKcal!==null&&s.totalKcal!==undefined);
-    if(gross&&Number.isFinite(resting)&&resting>0)return {kcal:Math.max(0,gross.totalKcal-resting*(Date.parse(gross.end)-Date.parse(gross.start))/86400000),estimated:true,start:gross.start,end:gross.end};
-    return {kcal:null,estimated:false,start:session.start,end:session.end};
+    if(gross&&Number.isFinite(resting)&&resting>0)return {kcal:Math.max(0,gross.totalKcal-resting*(Date.parse(gross.end)-Date.parse(gross.start))/86400000),estimated:true,basis:'derived',start:gross.start,end:gross.end};
+    return {kcal:null,estimated:false,basis:'unknown',start:session.start,end:session.end};
   }
   function energySummary(sessions,resting){
     const values=sessions.map(s=>({...energy(s,resting),key:key(s)})),known=values.filter(v=>v.kcal!==null),boundaries=[...new Set(known.flatMap(v=>[Date.parse(v.start),Date.parse(v.end)]))].sort((a,b)=>a-b);
-    let total=0,overlap=false;
+    let total=0,overlap=false;const used=new Set(),priority={active:0,source:1,derived:2};
     for(let i=1;i<boundaries.length;i++){
-      const a=boundaries[i-1],b=boundaries[i],cover=known.filter(v=>Date.parse(v.start)<=a&&Date.parse(v.end)>=b).sort((x,y)=>Number(x.estimated)-Number(y.estimated)||(Date.parse(x.end)-Date.parse(x.start))-(Date.parse(y.end)-Date.parse(y.start))||x.key.localeCompare(y.key));
+      const a=boundaries[i-1],b=boundaries[i],cover=known.filter(v=>Date.parse(v.start)<=a&&Date.parse(v.end)>=b).sort((x,y)=>priority[x.basis]-priority[y.basis]||(Date.parse(x.end)-Date.parse(x.start))-(Date.parse(y.end)-Date.parse(y.start))||x.key.localeCompare(y.key));
       if(cover.length>1)overlap=true;
-      if(cover.length)total+=cover[0].kcal*(b-a)/(Date.parse(cover[0].end)-Date.parse(cover[0].start));
+      if(cover.length){total+=cover[0].kcal*(b-a)/(Date.parse(cover[0].end)-Date.parse(cover[0].start));used.add(cover[0].basis);}
     }
-    return {kcal:known.length?Math.round(total):sessions.length?null:0,count:sessions.length,missing:values.length-known.length,estimated:known.some(v=>v.estimated)||overlap,overlap};
+    return {kcal:known.length?Math.round(total):sessions.length?null:0,count:sessions.length,missing:values.length-known.length,estimated:used.has('derived')||overlap,restAdjusted:used.has('derived'),unclassified:used.has('source'),overlap};
   }
-  const api={validate,dedupe,labels,energy,energySummary};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreSessions=api;
+  function walkingReference(minutes,weight,resting){
+    if(!Number.isFinite(minutes)||minutes<=0||!Number.isFinite(weight)||weight<=0||!Number.isFinite(resting)||resting<=0)return null;
+    // Comparison scenario only: 4 km/h, 0% incline. 2024 Compendium: level ground / treadmill.
+    const grossLow=3*weight*minutes/60,grossHigh=3.5*weight*minutes/60,restKcal=resting*minutes/1440;
+    return {minutes,weight,resting,speed:4,incline:0,grossLow,grossHigh,restKcal,activeLow:Math.max(0,grossLow-restKcal),activeHigh:Math.max(0,grossHigh-restKcal)};
+  }
+  const api={validate,dedupe,labels,energy,energySummary,isUnclassifiedSource,walkingReference};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreSessions=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
