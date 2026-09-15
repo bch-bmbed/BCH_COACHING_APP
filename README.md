@@ -90,7 +90,7 @@ Sources officielles consultées le 15 septembre 2026 :
 
 ## Vérification
 
-Exécuter `node --test tests/*.test.cjs` : 63 tests de calculs, migration, pas et marche, historique des objectifs, pesées, sauvegardes, fusion, deux clients simulés, conflits de révision et coupure réseau, projection partielle, couverture manquante, données anciennes, changements d’heure et validation des imports. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
+Exécuter `node --test tests/*.test.cjs` : 75 tests de calculs, migration, pas et marche, historique des objectifs, pesées, sauvegardes, fusion, deux clients simulés, conflits de révision et coupure réseau, projection partielle, couverture manquante, données anciennes, changements d’heure et validation des imports. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
 
 Navigation vérifiée dans le navigateur aux largeurs 320, 390 et 1280 px : une seule vue visible, aucun débordement horizontal, saisie répartie sur plusieurs onglets puis enregistrement, correction d’un champ invalide dans un panneau masqué, ajout d’activité, rechargement des repas/notes/pesée, retour et avance du navigateur, lien historique de connexion `#sync`. Les données de ces essais restent dans le stockage local de la prévisualisation.
 
@@ -108,7 +108,7 @@ Les tables `health_bridge_devices` et `health_snapshots` sont privées avec RLS.
 
 ### Compilation Android
 
-Depuis `android/`, avec Java 17, Gradle 8.13 et le SDK Android 36 : `gradle testReleaseUnitTest assembleRelease`. Le workflow `.github/workflows/android.yml` fournit ces outils, exécute cinq tests des intervalles d’énergie, signe l’APK et publie une release. Les secrets GitHub Actions `ANDROID_SIGNING_KEYSTORE` (base64 du JKS) et `ANDROID_SIGNING_PASSWORD` permettent de conserver la même signature pour les mises à jour ; alias `equilibre`. Conserver une sauvegarde privée de cette clé. Les fichiers JKS et mots de passe ne doivent jamais entrer dans Git.
+Depuis `android/`, avec Java 17, Gradle 8.13 et le SDK Android 36 : `gradle testReleaseUnitTest assembleRelease`. Le workflow `.github/workflows/android.yml` fournit ces outils, exécute six tests des intervalles d’énergie, signe l’APK et publie une release. Les secrets GitHub Actions `ANDROID_SIGNING_KEYSTORE` (base64 du JKS) et `ANDROID_SIGNING_PASSWORD` permettent de conserver la même signature pour les mises à jour ; alias `equilibre`. Conserver une sauvegarde privée de cette clé. Les fichiers JKS et mots de passe ne doivent jamais entrer dans Git.
 
 ## Import automatique multisource et séances
 
@@ -119,3 +119,15 @@ Les agrégats Android de calories et pas exploitent toutes les sources et les pr
 Les imports apparaissent dans Activités, le compteur du Bilan et l’historique même sans repas saisi. Ils ne sont pas ajoutés au total calorique importé. Les lectures autorisées remplacent le snapshot de la journée, ce qui reprend les corrections et suppressions à la source ; une permission retirée conserve les imports antérieurs. `supabase/tests/health-multisource.sql` vérifie ces cas. Les données qui ne sont pas écrites dans Santé Connect ne peuvent pas être inventées : la présence réelle des séances Garmin/Urevo reste à vérifier après la première synchronisation de la mise à jour.
 
 Vérifications de cette évolution : 63 tests JavaScript, 5 tests Android en CI, test HTTP v2 sur la fonction déployée avec deux séances fictives de sources différentes, vérification de leur conservation brute, puis suppression du compte de test. Interface vérifiée à 320 et 390 px : séances regroupées, détails des copies, pas importés et permission absente ; aucun débordement ni erreur JavaScript.
+
+## Bilan visuel et calories des séances
+
+Le Bilan affiche un anneau apports / objectif alimentaire, le nombre de kcal actives des séances et leur part dans la dépense quotidienne retenue. Un dépassement reste chiffré même quand l’anneau est plein. Les champs inconnus restent distincts de zéro, les repas incomplets et les séances sans calories sont signalés.
+
+Le modèle `balance-model.js` utilise les séances regroupées. En présence d’imports, les saisies manuelles restent à part, car elles n’ont pas d’horaires permettant d’exclure les copies. Sans séance importée, les activités manuelles réalisées et la marche renseignée servent de repli ; les activités prévues sont exclues. Les périodes importées qui se chevauchent sont découpées et comptées une fois, avec une estimation signalée (priorité aux calories actives directes puis au créneau le plus précis). Cela ne modifie pas le calcul de dépense du jour et n’ajoute pas les séances au maintien.
+
+L’APK android-6 ajoute le champ facultatif `totalKcal` à chaque séance v2. Il utilise les calories totales de la même application, couvrant entièrement la séance, et rejette les enregistrements couvrant une durée supérieure à 120 % de celle de la séance. Les calories totales incluent le repos selon [la documentation Android](https://developer.android.com/reference/android/health/connect/datatypes/TotalCaloriesBurnedRecord). Si les calories actives manquent, le dashboard estime donc `max(0, totalKcal − métabolisme × durée / 24 h)`, avec le signe ≈. Sans métabolisme renseigné, la valeur reste inconnue. Les calories actives fournies, y compris zéro, restent prioritaires.
+
+Redéployer `health-bridge` avec le nouveau `session-model.js` pour préserver et valider ce champ facultatif. Aucune migration SQL ni nouvelle autorisation Android n’est nécessaire. L’association existante est conservée ; installer l’APK puis synchroniser pour enrichir les séances déjà importées.
+
+Vérification : 75 tests JavaScript et 6 tests Android réussis ; envoi HTTP v2 de séances fictives avec `activeKcal: null` et `totalKcal: 175`, reprise idempotente et validation du champ conservé en base. Le compte de test a ensuite été supprimé.

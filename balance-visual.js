@@ -1,0 +1,30 @@
+(function(){
+  'use strict';
+  const $=id=>document.getElementById(id),fmt=n=>n===null?'—':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(n);
+  window.BalanceVisual={render({day,intakeTarget,expense,sessions,resting,state,completed}){
+    const a=window.EquilibreBalance.activities(day,sessions,resting,state),p=window.EquilibreBalance.progress(day.intake,intakeTarget,a.kcal,expense);
+    $('balance-ring-progress').setAttribute('stroke-dasharray',`${p.ring*100} 100`);
+    $('balance-visual').classList.toggle('over-budget',p.remaining!==null&&p.remaining<0);
+    $('balance-ring-percent').textContent=p.ratio===null?'—':fmt(p.ratio*100)+' %';
+    $('balance-ring-label').textContent='de l’objectif';
+    $('balance-food-values').textContent=`${fmt(day.intake)} / ${fmt(intakeTarget)} kcal`;
+    $('balance-ring').setAttribute('aria-label',`Apports : ${fmt(day.intake)} kcal ; objectif alimentaire : ${fmt(intakeTarget)} kcal.${p.ratio===null?'':` ${fmt(p.ratio*100)} % de l’objectif.`}`);
+    $('balance-food-status').textContent=p.remaining===null?'Repas ou objectif à renseigner':p.remaining>0?`${fmt(p.remaining)} kcal avant l’objectif`:p.remaining<0?`${fmt(-p.remaining)} kcal au-dessus de l’objectif`:'Objectif alimentaire atteint';
+    $('balance-activity-title').textContent=a.source==='manual'?'Activités saisies':'Séances synchronisées';
+    $('balance-active-value').textContent=(a.estimated&&a.kcal!==null?'≈ ':'')+fmt(a.kcal);
+    $('balance-active-unit').textContent='kcal actives';
+    $('balance-active-bar').style.width=(p.activityRatio===null?0:p.activityRatio*100)+'%';
+    $('balance-active-track').classList.toggle('no-value',p.activityRatio===null);
+    $('balance-active-share').textContent=p.inconsistent?'Total de dépense à vérifier':p.activityRatio===null?'Part dans la dépense : à compléter':`≈ ${fmt(p.activityRatio*100)} % des ${fmt(expense)} kcal de dépense retenue`;
+    $('balance-active-detail').textContent=a.source==='none'?'En attente de données d’activité':a.source==='manual'?'Activités réalisées et marche renseignées':`${a.count} séance${a.count>1?'s':''} après regroupement${a.missing?' · '+a.missing+' sans calories connues':''}`;
+    const notes=[];
+    if(completed!==null&&completed<4)notes.push(`${completed}/4 repas renseignés : progression provisoire.`);
+    if(a.missing)notes.push('Le total des activités reste incomplet.');
+    if(a.estimated)notes.push('≈ : calories actives estimées depuis le total de séance, après retrait du repos, ou créneaux qui se chevauchent.');
+    if(a.manualCount)notes.push(`${a.manualCount} saisie(s) manuelle(s) conservée(s) séparément pour éviter les copies.`);
+    $('balance-visual-note').textContent=notes.join(' ');$('balance-visual-note').hidden=!notes.length;
+    const text=a.source==='manual'?'Le calcul du bilan suit la méthode de ton profil.':'Ces calories détaillent les séances ; elles ne sont pas ajoutées à nouveau à la dépense du jour.';
+    $('balance-counting-note').textContent=text;
+    return a;
+  }};
+})();

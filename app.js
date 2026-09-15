@@ -185,6 +185,7 @@ function renderSummary() {
   const targetExpense=day.total!==null||!day.activities.some(a=>a.state==='planned')?b.actualExpense:b.plannedExpense;
   const intakeTarget=day.adaptive&&b.plannedExpense!==null&&day.target!==null?Math.max(0,b.plannedExpense-day.target):M.dailyIntakeTarget(day,targetExpense);
   $('intake-detail').textContent = intakeTarget === null ? 'Objectif calorique du jour à compléter' : `Objectif du jour : ${fmt(intakeTarget)} kcal`;
+  window.BalanceVisual?.render({day,intakeTarget,expense:b.plannedExpense,sessions:imported,resting:data.profile.resting,state:window.HealthBridge?.activityState(selected)||{},completed:meals.completed});
   $('expenditure-detail').textContent = average?'Maintien moyen · activité habituelle incluse':b.plannedExpense === null ? 'Base ou calories actives à compléter' : 'Base + séances + marche';
   if(day.adaptive)$('expenditure-detail').textContent=health?.status==='projected'?'Projection actualisée pour minuit':health?.status==='complete'?'Total importé de la journée':health?.status==='manual'?'Total saisi manuellement':'Maintien moyen en attente de données';
   const origin = day.total !== null ? 'Total quotidien saisi' : day.adaptive&&health?.status==='projected'?'Projection à minuit':day.adaptive&&health?.status==='complete'?'Total importé':average?'Estimation au maintien moyen':'Base + séances réalisées + marche';

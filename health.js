@@ -49,11 +49,12 @@
     $('imported-status').textContent=lastError||(!user?'Connecte-toi pour retrouver tes séances importées.':!snapshot?'Aucun envoi reçu pour cette date.':snapshot.version<2?'La première version ne transmettait pas les séances. Mets à jour Équilibre Connect et autorise les séances, puis synchronise.':!snapshot.permissions.sessions?'Lecture des séances non autorisée. Les imports précédents restent conservés. Dans Équilibre Connect, actualise les autorisations.':!sessions.length?'Aucune séance écrite dans Santé Connect pour cette date lors du dernier envoi. Vérifie Données → Activité → Exercice dans Santé Connect, puis synchronise à nouveau.':`Transfert du ${time(snapshot.capturedAt)} · horaires affichés dans le fuseau ${snapshot.zone}.`);
     const clock=iso=>new Date(iso).toLocaleTimeString('fr-FR',{timeZone:snapshot?.zone,hour:'2-digit',minute:'2-digit'});
     for(const s of sessions){
-      const card=node('article');card.className='imported-session';
-      card.append(node('h3',s.title),node('p',`${clock(s.start)}–${clock(s.end)} · ${fmt((Date.parse(s.end)-Date.parse(s.start))/60000)} min · ${s.activeKcal===null?'calories actives non disponibles':fmt(s.activeKcal)+' kcal actives sur ce créneau'}`),node('small',s.sources.map(sourceLabel).join(' + ')+(s.copies?` · ${s.copies} copie(s) regroupée(s)`:'')));
+      const card=node('article');card.className='imported-session';const energy=S.energy(s,window.Journal?.profile().resting);
+      card.append(node('h3',s.title),node('p',`${clock(s.start)}–${clock(s.end)} · ${fmt((Date.parse(s.end)-Date.parse(s.start))/60000)} min · ${energy.kcal===null?'calories actives non disponibles':(energy.estimated?'≈ ':'')+fmt(energy.kcal)+' kcal actives'+(energy.estimated?' estimées':' sur ce créneau')}`),node('small',s.sources.map(sourceLabel).join(' + ')+(s.copies?` · ${s.copies} copie(s) regroupée(s)`:'')));
       if(s.ambiguous)card.append(node('p','Chevauchement à vérifier : type ou enregistrements différents, séances conservées séparément.'));
       const detail=node('details');detail.append(node('summary','Voir les enregistrements source'));
-      for(const m of s.members)detail.append(node('p',`${sourceLabel(m.source)} · ${m.title||S.labels[m.kind]} · ${clock(m.start)}–${clock(m.end)} · ${fmt(m.activeKcal)} kcal actives`));
+      for(const m of s.members)detail.append(node('p',`${sourceLabel(m.source)} · ${m.title||S.labels[m.kind]} · ${clock(m.start)}–${clock(m.end)} · ${fmt(m.activeKcal)} kcal actives${m.totalKcal!==null&&m.totalKcal!==undefined?' · '+fmt(m.totalKcal)+' kcal totales (repos inclus)':''}`));
+      if(energy.estimated)detail.append(node('p','Estimation : total de la séance transmis par la source, moins le repos estimé sur sa durée avec le métabolisme de ton profil.'));
       card.append(detail);box.append(card);
     }return sessions;
   }
@@ -65,6 +66,7 @@
     },
     project:projection,
     sessions:sessionsOn,dates:()=>combined.map(s=>s.day),steps:date=>combined.find(s=>s.day===date)?.steps??null,
+    activityState:date=>({available:combined.find(s=>s.day===date)?.permissions?.sessions===true}),
     render(day,date){
       const p=projection(day,date),adaptive=day.adaptive===true;
       renderSessions(date);
