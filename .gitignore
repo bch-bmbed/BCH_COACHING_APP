@@ -11,3 +11,8 @@ Thumbs.db
 
 # Supabase CLI local cache
 supabase/.temp/
+android/.gradle/
+android/**/build/
+android/local.properties
+*.jks
+*.keystore

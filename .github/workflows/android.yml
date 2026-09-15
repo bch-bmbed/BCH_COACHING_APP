@@ -1,0 +1,43 @@
+name: Android companion
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Restore private signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_SIGNING_KEYSTORE }}
+        run: |
+          test -n "$KEYSTORE"
+          printf '%s' "$KEYSTORE" | base64 --decode > android/release.jks
+      - name: Test and build signed APK
+        working-directory: android
+        env:
+          SIGNING_PASSWORD: ${{ secrets.ANDROID_SIGNING_PASSWORD }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: gradle --no-daemon testReleaseUnitTest assembleRelease
+      - name: Publish Android download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk equilibre-connect.apk
+          sha256sum equilibre-connect.apk > equilibre-connect.apk.sha256
+          gh release create "android-${{ github.run_number }}" equilibre-connect.apk equilibre-connect.apk.sha256 --title "Équilibre Connect 1.0.${{ github.run_number }}" --notes "Passerelle personnelle Android 9+. Calories totales et pas depuis Santé Connect. Associer le téléphone depuis Compte dans le dashboard."
+      - name: Remove signing key from runner
+        if: always()
+        run: rm -f android/release.jks
