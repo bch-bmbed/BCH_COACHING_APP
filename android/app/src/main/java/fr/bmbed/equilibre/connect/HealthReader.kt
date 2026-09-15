@@ -3,53 +3,83 @@ package fr.bmbed.equilibre.connect
 import android.content.Context
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
-import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
-import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.metadata.DataOrigin
+import androidx.health.connect.client.records.*
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.request.AggregateRequest
+import androidx.health.connect.client.request.AggregateGroupByDurationRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.Duration
 
 class HealthReader(context: Context) {
     val client = HealthConnectClient.getOrCreate(context)
     companion object {
-        val required = setOf(HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),HealthPermission.getReadPermission(StepsRecord::class))
-        const val background = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
+        val totalPermission=HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
+        val sessionPermission=HealthPermission.getReadPermission(ExerciseSessionRecord::class)
+        val activePermission=HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class)
+        val stepsPermission=HealthPermission.getReadPermission(StepsRecord::class)
+        val required=setOf(totalPermission,sessionPermission,activePermission,stepsPermission)
+        const val background="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
     }
-    private suspend fun records(start: Instant,end: Instant,source: String? = null): List<TotalCaloriesBurnedRecord> {
-        val rows=mutableListOf<TotalCaloriesBurnedRecord>();var page: String?=null
+    private suspend inline fun <reified T: Record> records(start: Instant,end: Instant): List<T> {
+        val rows=mutableListOf<T>();var page: String?=null
         do {
-            val response=client.readRecords(ReadRecordsRequest(TotalCaloriesBurnedRecord::class,TimeRangeFilter.between(start,end),dataOriginFilter=if(source==null)emptySet() else setOf(DataOrigin(source)),pageSize=1000,pageToken=page))
+            val response=client.readRecords(ReadRecordsRequest(T::class,TimeRangeFilter.between(start,end),pageSize=1000,pageToken=page))
             rows.addAll(response.records);page=response.pageToken
-            require(rows.size<=100000) { "Trop de données. Réduis la période importée." }
+            require(rows.size<=100000) { "Trop de données pour un seul transfert." }
         }while(!page.isNullOrEmpty())
         return rows
     }
-    suspend fun sources(): List<String> {
-        val now=Instant.now()
-        return records(now.minusSeconds(7*86400),now).map { it.metadata.dataOrigin.packageName }.distinct().sorted()
+    private fun kind(type: Int): String = when(type) {
+        ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "walking"
+        ExerciseSessionRecord.EXERCISE_TYPE_RUNNING,ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL -> "running"
+        ExerciseSessionRecord.EXERCISE_TYPE_BIKING,ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY -> "cycling"
+        ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL,ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER -> "swimming"
+        ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING -> "strength"
+        ExerciseSessionRecord.EXERCISE_TYPE_ROWING,ExerciseSessionRecord.EXERCISE_TYPE_ROWING_MACHINE -> "rowing"
+        ExerciseSessionRecord.EXERCISE_TYPE_ELLIPTICAL -> "elliptical"
+        ExerciseSessionRecord.EXERCISE_TYPE_YOGA -> "yoga"
+        ExerciseSessionRecord.EXERCISE_TYPE_PILATES -> "pilates"
+        ExerciseSessionRecord.EXERCISE_TYPE_HIKING -> "hiking"
+        else -> "other"
     }
-    suspend fun snapshots(source: String,days: Int): JSONArray {
+    suspend fun snapshots(days: Int): JSONArray {
         val granted=client.permissionController.getGrantedPermissions()
-        require(granted.contains(HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class))) { "Autorise la lecture des calories totales dans Santé Connect." }
+        require(required.any { granted.contains(it) }) { "Autorise la lecture dans Santé Connect." }
         val zone=ZoneId.systemDefault();val today=LocalDate.now(zone);val now=Instant.now();val result=JSONArray()
         val first=today.minusDays(days.toLong()-1).atStartOfDay(zone).toInstant()
-        val records=records(first,now,source).map { EnergyInterval(it.startTime,it.endTime,it.energy.inKilocalories,it.metadata.lastModifiedTime) }
+        // No origin filter: collect every app, including future devices.
+        val totals=if(totalPermission in granted)records<TotalCaloriesBurnedRecord>(first,now) else emptyList()
+        val sessions=if(sessionPermission in granted)records<ExerciseSessionRecord>(first,now) else emptyList()
+        val energy=totals.map { EnergyInterval(it.startTime,it.endTime,it.energy.inKilocalories,it.metadata.lastModifiedTime) }
+        val caloriesCache=mutableMapOf<Pair<Instant,Instant>,Double?>()
         for(index in (days-1) downTo 0) {
             val day=today.minusDays(index.toLong());val start=day.atStartOfDay(zone).toInstant();val end=day.plusDays(1).atStartOfDay(zone).toInstant();val until=minOf(now,end)
-            val energyUntil=records.filter { it.start<until&&it.end>start }.maxOfOrNull { minOf(it.end,until) } ?: start
+            val energyUntil=energy.filter { it.start<until&&it.end>start }.maxOfOrNull { minOf(it.end,until) } ?: start
             val bins=JSONArray();var cursor=start
+            // Aggregate removes overlapping Activity data using Health Connect priorities.
+            val hourly=if(energyUntil>start)client.aggregateGroupByDuration(AggregateGroupByDurationRequest(setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL),TimeRangeFilter.between(start,energyUntil),Duration.ofHours(1))).associateBy { it.startTime } else emptyMap()
             while(cursor<energyUntil) {
-                val next=minOf(cursor.plusSeconds(3600),energyUntil);val bin=EnergyIntervals.bin(cursor,next,records)
-                bins.put(JSONObject().put("start",cursor.toString()).put("end",next.toString()).put("total",bin.total ?: JSONObject.NULL).put("covered",bin.covered).put("maxRecordSeconds",bin.maxRecordSeconds));cursor=next
+                val next=minOf(cursor.plusSeconds(3600),energyUntil);val coverage=EnergyIntervals.bin(cursor,next,energy)
+                val value=if(coverage.covered>0)hourly[cursor]?.result?.get(TotalCaloriesBurnedRecord.ENERGY_TOTAL)?.inKilocalories else null
+                bins.put(JSONObject().put("start",cursor.toString()).put("end",next.toString()).put("total",value ?: JSONObject.NULL).put("covered",if(value==null)0 else coverage.covered).put("maxRecordSeconds",coverage.maxRecordSeconds));cursor=next
             }
-            val steps=if(granted.contains(HealthPermission.getReadPermission(StepsRecord::class)))client.aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL),TimeRangeFilter.between(start,until)))[StepsRecord.COUNT_TOTAL] else null
-            result.put(JSONObject().put("version",1).put("day",day.toString()).put("source",source).put("zone",zone.id).put("capturedAt",now.toString()).put("start",start.toString()).put("end",end.toString()).put("bins",bins).put("steps",steps ?: JSONObject.NULL))
+            val stepsResult=if(stepsPermission in granted)client.aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL),TimeRangeFilter.between(start,until))) else null
+            val daySessions=sessions.filter { it.startTime>=start&&it.startTime<end&&it.endTime<=now }
+            require(daySessions.size<=500) { "Plus de 500 séances sur une journée : transfert arrêté sans supprimer les imports." }
+            val sessionJson=JSONArray()
+            for(s in daySessions) {
+                val window=s.startTime to s.endTime
+                if(activePermission in granted&&!caloriesCache.containsKey(window))caloriesCache[window]=client.aggregate(AggregateRequest(setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL),TimeRangeFilter.between(s.startTime,s.endTime)))[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+                sessionJson.put(JSONObject().put("id",s.metadata.id).put("clientId",s.metadata.clientRecordId?.take(200) ?: JSONObject.NULL).put("source",s.metadata.dataOrigin.packageName).put("modifiedAt",s.metadata.lastModifiedTime.toString()).put("start",s.startTime.toString()).put("end",s.endTime.toString()).put("type",s.exerciseType).put("kind",kind(s.exerciseType)).put("title",s.title?.take(160) ?: "").put("activeKcal",caloriesCache[window] ?: JSONObject.NULL))
+            }
+            val origins=(totals.filter { it.startTime<until&&it.endTime>start }.map { it.metadata.dataOrigin.packageName }+daySessions.map { it.metadata.dataOrigin.packageName }+(stepsResult?.dataOrigins?.map { it.packageName } ?: emptyList())).distinct().sorted()
+            val permissions=JSONObject().put("total",totalPermission in granted).put("steps",stepsPermission in granted).put("sessions",sessionPermission in granted).put("activeCalories",activePermission in granted)
+            result.put(JSONObject().put("version",2).put("day",day.toString()).put("source","health-connect").put("sources",JSONArray(origins)).put("permissions",permissions).put("sessions",sessionJson).put("zone",zone.id).put("capturedAt",now.toString()).put("start",start.toString()).put("end",end.toString()).put("bins",bins).put("steps",stepsResult?.get(StepsRecord.COUNT_TOTAL) ?: JSONObject.NULL))
         }
         return result
     }

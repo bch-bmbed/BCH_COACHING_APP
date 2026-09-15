@@ -6,6 +6,7 @@ import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.ZonedDateTime
@@ -14,9 +15,11 @@ import java.time.format.DateTimeFormatter
 object BridgeSync {
     suspend fun send(context: Context,days: Int) = withContext(Dispatchers.IO) {
         val vault=Vault(context);val parts=(vault.code() ?: error("Associe ce téléphone depuis le dashboard.")).split('.')
-        require(vault.source.isNotBlank()) { "Choisis une source de calories totales." }
-        val snapshots=HealthReader(context).snapshots(vault.source,days)
-        val body=JSONObject().put("action","sync").put("deviceId",parts[1]).put("token",parts[2]).put("snapshots",snapshots).toString()
+        val snapshots=HealthReader(context).snapshots(days)
+        var sessionCount=0
+        for(index in 0 until snapshots.length()) {
+        val snapshot=snapshots.getJSONObject(index);sessionCount+=snapshot.getJSONArray("sessions").length()
+        val body=JSONObject().put("action","sync").put("deviceId",parts[1]).put("token",parts[2]).put("snapshots",JSONArray().put(snapshot)).toString()
         val connection=URL("https://yuzvnyecrtcvzmxnlhfd.supabase.co/functions/v1/health-bridge").openConnection() as HttpURLConnection
         try {
             connection.requestMethod="POST";connection.connectTimeout=20000;connection.readTimeout=30000;connection.doOutput=true;connection.instanceFollowRedirects=false
@@ -26,8 +29,10 @@ object BridgeSync {
             val success=connection.responseCode in 200..299
             val response=(if(success)connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() } ?: "{}"
             if(!success)error(runCatching { JSONObject(response).optString("error","Synchronisation impossible.") }.getOrDefault("Synchronisation impossible."))
-            "Synchronisé à ${ZonedDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))} · $days journées vérifiées.".also { vault.status=it }
         }finally { connection.disconnect() }
+        }
+        val permission=snapshots.getJSONObject(snapshots.length()-1).getJSONObject("permissions").getBoolean("sessions")
+        "Synchronisé à ${ZonedDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))} · $days journées · $sessionCount enregistrements de séances, avant regroupement.${if(!permission) " Autorisation Séances absente : actualise les autorisations." else " Toutes les sources disponibles ont été lues."}".also { vault.status=it }
     }
 }
 class SyncWorker(context: Context,parameters: WorkerParameters): CoroutineWorker(context,parameters) {
