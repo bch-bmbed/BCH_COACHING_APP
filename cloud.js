@@ -91,7 +91,11 @@
     try{
       const {error}=await client.auth.signInWithOtp({email:$('email').value.trim(),options:{shouldCreateUser:true,emailRedirectTo:location.origin+location.pathname}});
       if(error)throw error;status('E-mail envoyé','Ouvre le lien reçu sur cet appareil. Vérifie aussi les indésirables.');
-    }catch(error){status('Connexion impossible',error.message);}finally{button.disabled=false;}
+    }catch(error){
+      if(error.code==='over_email_send_rate_limit' || /email rate limit exceeded/i.test(error.message||'')){
+        status('Limite d’e-mails atteinte','Trop de liens de connexion ont été demandés. Attends environ une heure avant de demander un nouveau lien sur cet appareil. Garde tes autres appareils connectés : leurs saisies continuent à se synchroniser.');
+      }else status('Connexion impossible',error.message);
+    }finally{button.disabled=false;}
   };
   $('sync-now').onclick=()=>{if(J.saveDraft())return sync();};
   $('logout').onclick=async()=>{

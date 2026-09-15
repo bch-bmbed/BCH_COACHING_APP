@@ -49,6 +49,8 @@ Projet Supabase : `yuzvnyecrtcvzmxnlhfd`, région Paris (`eu-west-3`). Le fichie
 3. Authentification par lien e-mail. Le service e-mail par défaut de Supabase n'envoie qu'aux adresses autorisées de l'équipe du projet ; pour ce suivi personnel, utiliser l'adresse du compte Supabase propriétaire. Pour d'autres adresses, configurer un SMTP adapté avant d'ouvrir l'accès. Aucun SMTP payant n'est prévu ici.
 4. Ouvrir le dashboard, demander un lien puis l'ouvrir sur le même appareil. Répéter sur le deuxième appareil avec la même adresse. Les comptes de la plateforme Supabase et les utilisateurs de l'application sont distincts : le premier lien crée l'utilisateur du journal.
 
+Le service mail intégré limite actuellement le projet à **2 e-mails par heure**, partagés entre tous les appareils. Si « Limite d’e-mails atteinte » apparaît, attendre environ une heure avant une nouvelle demande. Les sessions déjà connectées et la synchronisation du journal continuent à fonctionner. L’application explique ce blocage en français, sans relancer automatiquement l’envoi. Pour dépasser ce quota, Supabase exige un service SMTP personnalisé ; changer uniquement le réglage de quota ne suffit pas avec le service intégré.
+
 L'offre gratuite était annoncée à 0 $/mois lors de la création. Elle peut être mise en pause après une période d'inactivité ; les copies locales et exports restent disponibles. Voir https://supabase.com/pricing et https://supabase.com/docs/guides/auth/auth-smtp.
 
 ## Suite prévue : import automatique des plateformes sportives
