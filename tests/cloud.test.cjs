@@ -52,10 +52,10 @@ test('hors ligne, aucune donnée locale ni confirmation ne disparaît',async()=>
 const goals=base=>({plannedIntake:1800,base,target:400});
 test('le profil et les pesées se synchronisent même sans journée enregistrée',async()=>{
   const server={rows:new Map()},pc=await device(server),phone=await device(server);
-  pc.editProfile(p=>p.goals[date]=goals(2200));await pc.sync();await phone.sync();
+  pc.editProfile(p=>{p.goals[date]=goals(2200);p.resting=1760;});await pc.sync();await phone.sync();
   phone.editProfile(p=>p.weights[date]=79.5);pc.editProfile(p=>p.goals[date].target=500);
   await phone.sync();await pc.sync();await phone.sync();
-  assert.deepEqual(pc.snapshot().profile,phone.snapshot().profile);assert.equal(pc.snapshot().profile.weights[date],79.5);assert.equal(server.rows.size,0);assert.equal(pc.status(),'Synchronisé');
+  assert.deepEqual(pc.snapshot().profile,phone.snapshot().profile);assert.equal(pc.snapshot().profile.weights[date],79.5);assert.equal(phone.snapshot().profile.resting,1760);assert.equal(server.rows.size,0);assert.equal(pc.status(),'Synchronisé');
 });
 test('une révision concurrente du profil est fusionnée et une seconde synchronisation est idempotente',async()=>{
   const server={rows:new Map()},pc=await device(server);pc.editProfile(p=>p.goals[date]=goals(2200));

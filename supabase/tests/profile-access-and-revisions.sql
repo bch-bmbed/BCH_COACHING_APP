@@ -8,15 +8,23 @@ select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting(
 do $$
 declare r jsonb; n integer;
 begin
-  r:=public.save_account_profile('{"goals":{},"weights":{}}',0);
+  r:=public.save_account_profile('{"goals":{},"weights":{},"resting":1760}',0);
   if not (r->>'saved')::boolean or (r->>'revision')::int<>1 then raise exception 'Initial insert failed';end if;
   r:=public.save_account_profile('{"goals":{},"weights":{"2000-01-01":80}}',0);
   if (r->>'saved')::boolean or (r->>'revision')::int<>1 then raise exception 'Stale revision overwrote data';end if;
   r:=public.save_account_profile('{"goals":{},"weights":{"2000-01-01":80}}',1);
   if not (r->>'saved')::boolean or (r->>'revision')::int<>2 then raise exception 'Valid update failed';end if;
+  if (r->'payload'->>'resting')::numeric is distinct from 1760 then raise exception 'Old client erased resting metabolism';end if;
   begin
     perform public.save_account_profile('{}',2);
     raise exception 'Malformed profile accepted';
+  exception when check_violation then null;
+  end;
+  r:=public.save_account_profile('{"goals":{},"weights":{},"resting":null}',2);
+  if not (r->>'saved')::boolean or r->'payload'->'resting' is distinct from 'null'::jsonb then raise exception 'Explicit clearing failed';end if;
+  begin
+    perform public.save_account_profile('{"goals":{},"weights":{},"resting":"invalid"}',3);
+    raise exception 'Invalid metabolism accepted';
   exception when check_violation then null;
   end;
   perform set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('test.user_b'),'role','authenticated')::text,true);

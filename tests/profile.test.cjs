@@ -47,5 +47,26 @@ test('même objectif et même pesée modifiés simultanément demandent un choix
   local.goals['2026-09-15'].base=2300;remote.goals['2026-09-15'].base=2400;local.weights['2026-09-15']=79;remote.weights['2026-09-15']=null;
   const merged=S.mergeProfile(base,local,remote);assert.equal(merged.conflicts.length,2);
   const resolved=S.mergeProfile(base,local,remote,Object.fromEntries(merged.conflicts.map(c=>[c.key,'remote'])));
-  assert.equal(resolved.conflicts.length,0);assert.deepEqual(resolved.profile,remote);
+  assert.equal(resolved.conflicts.length,0);assert.deepEqual(resolved.profile,M.validateProfile(remote));
+});
+
+test('métabolisme fixe : import, export et nouvelles pesées conservent la valeur sans double comptage',()=>{
+  const p={goals:{'2026-09-15':goals()},weights:{'2026-09-15':80},resting:1760};
+  const backup={version:3,days:{},profile:p};
+  const restored=M.validateBackup(JSON.parse(JSON.stringify(backup)));
+  const local=structuredClone(restored.profile);local.weights['2026-09-16']=79;
+  const merged=S.mergeProfile(p,local,p).profile;
+  assert.equal(merged.resting,1760);assert.equal(M.balance(M.effectiveDay(undefined,merged,'2026-09-16')).plannedExpense,2200);
+  assert.equal(M.balance(M.effectiveDay(undefined,{...merged,goals:{}},'2026-09-16')).plannedExpense,null);
+  assert.equal(M.mergeBackup({version:3,days:{},profile:M.blankProfile()},backup).data.profile.resting,1760);
+});
+test('métabolisme optionnel : anciennes sauvegardes et validation des valeurs',()=>{
+  assert.equal(M.validateProfile({goals:{},weights:{}}).resting,null);
+  for(const resting of [0,-1,20001,'1760',Infinity])assert.throws(()=>M.validateProfile({goals:{},weights:{},resting}));
+  assert.equal(M.validateProfile({goals:{},weights:{},resting:null}).resting,null);
+});
+test('deux estimations du métabolisme différentes demandent un choix',()=>{
+  const base={...M.blankProfile(),resting:1760},local={...base,resting:1800},remote={...base,resting:1750};
+  const result=S.mergeProfile(base,local,remote);assert.equal(result.conflicts[0].key,'profile.resting');
+  assert.equal(S.mergeProfile(base,local,remote,{'profile.resting':'remote'}).profile.resting,1750);
 });

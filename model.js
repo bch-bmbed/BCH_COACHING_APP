@@ -17,10 +17,12 @@
   }
   const goalFields = {plannedIntake: 30000, base: 30000, target: 10000};
   const blankGoals = () => ({plannedIntake:null,base:null,target:null});
-  const blankProfile = () => ({goals:{},weights:{}});
+  const blankProfile = () => ({goals:{},weights:{},resting:null});
   function validateProfile(raw) {
     if(!raw || typeof raw!=='object' || !raw.goals || !raw.weights || Array.isArray(raw.goals) || Array.isArray(raw.weights) || typeof raw.goals!=='object' || typeof raw.weights!=='object' || Object.keys(raw.goals).length>20000 || Object.keys(raw.weights).length>20000)throw Error('Profil invalide.');
     const result=blankProfile();
+    if(!optionalNumber(raw.resting??null,20000,1))throw Error('Métabolisme de base invalide.');
+    result.resting=raw.resting??null;
     for(const date of Object.keys(raw.goals).sort()){
       if(!validDate(date) || !raw.goals[date] || typeof raw.goals[date]!=='object')throw Error('Date d’objectif invalide.');
       const goals=blankGoals();
@@ -120,6 +122,7 @@
       else { merged.days[date] = day; added++; }
     }
     for(const key of ['goals','weights'])for(const [date,value] of Object.entries(data.profile[key]))if(!Object.hasOwn(merged.profile[key],date))merged.profile[key][date]=structuredClone(value);
+    if(merged.profile.resting===null && data.profile.resting!==null)merged.profile.resting=data.profile.resting;
     merged.profile=validateProfile(merged.profile);
     return {data: merged, added, skipped};
   }

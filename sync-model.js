@@ -31,6 +31,7 @@
     return {day:inflate(result),conflicts};
   }
   function label(key) {
+    if(key==='profile.resting')return 'Métabolisme de base estimé';
     if(key.startsWith('profile.goals.')){const [, ,date,field]=key.split('.');return `Objectif du ${date} · ${label(field)}`;}
     if(key.startsWith('profile.weights.'))return 'Pesée du '+key.slice('profile.weights.'.length);
     const titles={plannedIntake:'Apports prévus',base:'Dépense hors séances',target:'Déficit cible',total:'Dépense totale',weight:'Pesée',note:'Note du jour',intakeMode:'Mode de saisie des apports',legacyIntake:'Ancien total consommé'};
@@ -47,6 +48,7 @@
       if(resolutions[key]==='remote')return copy(rv);
       conflicts.push({key,local:copy(lv),remote:copy(rv)});return copy(lv);
     }
+    result.resting=merge('profile.resting',b.resting??null,l.resting??null,r.resting??null);
     for(const date of new Set([...Object.keys(b.goals),...Object.keys(l.goals),...Object.keys(r.goals)])){
       // Distinct effective dates are independent changes; merge fields only within a shared period.
       if(!Object.hasOwn(b.goals,date) && !Object.hasOwn(l.goals,date)){result.goals[date]=copy(r.goals[date]);continue;}

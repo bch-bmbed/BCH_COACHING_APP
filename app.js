@@ -73,6 +73,7 @@ function draft() {
 function persist(next,dayBase=cloudBase,profileBase=cloudProfileBase){localStorage.setItem(KEY,JSON.stringify({...next,cloudBase:dayBase,cloudProfileBase:profileBase}));}
 function renderProfile(){
   if(profileDirty)return;
+  $('profile-resting').value=data.profile.resting??'';
   const goals=M.goalsAt(data.profile,localDate())||M.blankGoals();
   for(const [key,id] of Object.entries(profileIds))$(id).value=goals[key]??'';
   const latest=M.latestWeight(data.profile,data.days,localDate());
@@ -91,6 +92,7 @@ function saveProfile(){
       for(const date of Object.keys(next.profile.goals))if(date>localDate())delete next.profile.goals[date];
       next.profile.goals[localDate()]=goals;
     }
+    next.profile.resting=$('profile-resting').value===''?null:Number($('profile-resting').value);
     const date=$('profile-weight-date').value,weight=$('profile-weight').value===''?null:Number($('profile-weight').value);
     if(profileWeightDirty && weight!==M.weightOn(next.profile,next.days,date))next.profile.weights[date]=weight;
     next.profile=M.validateProfile(next.profile);persist(next);data=next;profileDirty=false;profileWeightDirty=false;
@@ -137,6 +139,8 @@ function metric(id, value) {
 function renderSummary() {
   const day = M.effectiveDay(draft(),data.profile,selected), b = M.balance(day);
   const goals=M.goalsAt(data.profile,selected)||M.blankGoals();
+  $('resting-summary').textContent=data.profile.resting===null?'':`Métabolisme de base du profil : ${fmt(data.profile.resting)} kcal/j · au repos`;
+  $('resting-summary').hidden=data.profile.resting===null;
   $('goals-summary').textContent=`Apports : ${fmt(goals.plannedIntake)} kcal · Dépense hors séances : ${fmt(goals.base)} kcal · Déficit cible : ${fmt(goals.target)} kcal`;
   const known=M.latestWeight(data.profile,data.days,selected);
   $('known-weight').textContent=known?`Dernier poids connu : ${fmt(known.weight)} kg · pesée du ${known.date.split('-').reverse().join('/')}`:'Poids à renseigner dans ton profil ou dans Suivi.';
