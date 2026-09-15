@@ -90,7 +90,7 @@ Sources officielles consultées le 15 septembre 2026 :
 
 ## Vérification
 
-Exécuter `node --test tests/*.test.cjs` : 75 tests de calculs, migration, pas et marche, historique des objectifs, pesées, sauvegardes, fusion, deux clients simulés, conflits de révision et coupure réseau, projection partielle, couverture manquante, données anciennes, changements d’heure et validation des imports. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
+Exécuter `node --test tests/*.test.cjs` : 77 tests de calculs, migration, pas et marche, historique des objectifs, pesées, sauvegardes, fusion, deux clients simulés, conflits de révision et coupure réseau, projection partielle, couverture manquante, données anciennes, changements d’heure et validation des imports. Les tests de clients utilisent un transport simulé ; ils ne remplacent pas une vérification de connexion e-mail sur les deux appareils.
 
 Navigation vérifiée dans le navigateur aux largeurs 320, 390 et 1280 px : une seule vue visible, aucun débordement horizontal, saisie répartie sur plusieurs onglets puis enregistrement, correction d’un champ invalide dans un panneau masqué, ajout d’activité, rechargement des repas/notes/pesée, retour et avance du navigateur, lien historique de connexion `#sync`. Les données de ces essais restent dans le stockage local de la prévisualisation.
 
@@ -108,7 +108,7 @@ Les tables `health_bridge_devices` et `health_snapshots` sont privées avec RLS.
 
 ### Compilation Android
 
-Depuis `android/`, avec Java 17, Gradle 8.13 et le SDK Android 36 : `gradle testReleaseUnitTest assembleRelease`. Le workflow `.github/workflows/android.yml` fournit ces outils, exécute six tests des intervalles d’énergie, signe l’APK et publie une release. Les secrets GitHub Actions `ANDROID_SIGNING_KEYSTORE` (base64 du JKS) et `ANDROID_SIGNING_PASSWORD` permettent de conserver la même signature pour les mises à jour ; alias `equilibre`. Conserver une sauvegarde privée de cette clé. Les fichiers JKS et mots de passe ne doivent jamais entrer dans Git.
+Depuis `android/`, avec Java 17, Gradle 8.13 et le SDK Android 36 : `gradle testReleaseUnitTest assembleRelease`. Le workflow `.github/workflows/android.yml` fournit ces outils, exécute onze tests des intervalles d’énergie et des états de configuration, signe l’APK et publie une release. Les secrets GitHub Actions `ANDROID_SIGNING_KEYSTORE` (base64 du JKS) et `ANDROID_SIGNING_PASSWORD` permettent de conserver la même signature pour les mises à jour ; alias `equilibre`. Conserver une sauvegarde privée de cette clé. Les fichiers JKS et mots de passe ne doivent jamais entrer dans Git.
 
 ## Import automatique multisource et séances
 
@@ -131,3 +131,13 @@ L’APK android-6 ajoute le champ facultatif `totalKcal` à chaque séance v2. I
 Redéployer `health-bridge` avec le nouveau `session-model.js` pour préserver et valider ce champ facultatif. Aucune migration SQL ni nouvelle autorisation Android n’est nécessaire. L’association existante est conservée ; installer l’APK puis synchroniser pour enrichir les séances déjà importées.
 
 Vérification : 75 tests JavaScript et 6 tests Android réussis ; envoi HTTP v2 de séances fictives avec `activeKcal: null` et `totalKcal: 175`, reprise idempotente et validation du champ conservé en base. Le compte de test a ensuite été supprimé.
+
+## États de la passerelle Android (1.0.7)
+
+L’écran Android affiche quatre étapes et leurs états réels : code enregistré / compte vérifié par un envoi réussi, autorisations de lecture revérifiées au retour dans l’application, transfert en cours ou en attente et dernière réussite datée, automatisation avec permission et tâche WorkManager présentes. Le formulaire du code est replié après l’association. Une permission partielle ou retirée reste signalée ; appuyer sur le bouton ne valide pas une étape.
+
+Le transfert manuel est un travail unique WorkManager (`KEEP`) ; le bouton est désactivé tant qu’un travail manuel attend ou qu’un transfert s’exécute. Un mutex sérialise les transferts automatiques et manuels. Le travail survit à la recréation de l’écran ; sans permission de lecture en arrière-plan, garder l’application au premier plan. L’heure de la dernière réussite et le compte rendu sont persistés séparément des échecs suivants. Un changement de code remet à zéro cette confirmation pour ne pas attribuer la réussite d’un autre compte.
+
+Les prochains snapshots incluent `bridgeVersion`, entier facultatif validé par `health-model.js`. Le dashboard l’affiche pour distinguer un ancien transfert d’une version récente. Un champ absent reste inconnu, sans supposer que l’application est à jour. Aucun changement SQL ni nouvelle permission. Redéployer la dépendance `health-model.js` dans `health-bridge`.
+
+Validation : 77 tests JavaScript et 11 tests Android en CI, dont les permissions partielles/révoquées, l’automatisation sans permission ou sans tâche, les travaux en attente et les échecs après une réussite. Compilation et publication de l’APK signée réussies ; la vérification de l’écran sur le téléphone reste à effectuer après installation.

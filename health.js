@@ -52,11 +52,17 @@
       const card=node('article');card.className='imported-session';const energy=S.energy(s,window.Journal?.profile().resting);
       card.append(node('h3',s.title),node('p',`${clock(s.start)}–${clock(s.end)} · ${fmt((Date.parse(s.end)-Date.parse(s.start))/60000)} min · ${energy.kcal===null?'calories actives non disponibles':(energy.estimated?'≈ ':'')+fmt(energy.kcal)+' kcal actives'+(energy.estimated?' estimées':' sur ce créneau')}`),node('small',s.sources.map(sourceLabel).join(' + ')+(s.copies?` · ${s.copies} copie(s) regroupée(s)`:'')));
       if(s.ambiguous)card.append(node('p','Chevauchement à vérifier : type ou enregistrements différents, séances conservées séparément.'));
+      if(energy.kcal===null){
+        const hasTotal=s.members.some(m=>m.totalKcal!==null&&m.totalKcal!==undefined);
+        card.append(node('p',hasTotal?'Le total de séance est disponible. Renseigne ton métabolisme de base dans Compte pour estimer la part active.':snapshot.bridgeVersion>=6?'Aucune calorie de séance exploitable reçue. Vérifie les calories partagées par la source dans Santé Connect.':'Cet envoi ne confirme pas la version installée. Mets à jour Équilibre Connect puis lance Synchroniser maintenant pour récupérer les calories de séance.'));
+      }
       const detail=node('details');detail.append(node('summary','Voir les enregistrements source'));
       for(const m of s.members)detail.append(node('p',`${sourceLabel(m.source)} · ${m.title||S.labels[m.kind]} · ${clock(m.start)}–${clock(m.end)} · ${fmt(m.activeKcal)} kcal actives${m.totalKcal!==null&&m.totalKcal!==undefined?' · '+fmt(m.totalKcal)+' kcal totales (repos inclus)':''}`));
       if(energy.estimated)detail.append(node('p','Estimation : total de la séance transmis par la source, moins le repos estimé sur sa durée avec le métabolisme de ton profil.'));
       card.append(detail);box.append(card);
-    }return sessions;
+    }
+    if(snapshot?.bridgeVersion)$('imported-status').textContent+=` Passerelle 1.0.${snapshot.bridgeVersion}.`;
+    return sessions;
   }
   window.HealthBridge={
     activate(db,account){client=db;user=account;epoch++;snapshots=[];combined=[];devices=[];lastError='';$('health-code').value='';$('health-code-box').hidden=true;

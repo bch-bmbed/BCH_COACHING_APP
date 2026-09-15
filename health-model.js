@@ -17,6 +17,8 @@
     if(raw.steps!==null&&(!Number.isInteger(raw.steps)||raw.steps<0||raw.steps>200000))throw Error('Pas Santé Connect invalides.');
     const result={version:raw.version,day:raw.day,source:raw.source,zone:raw.zone,capturedAt:raw.capturedAt,start:raw.start,end:raw.end,bins,steps:raw.steps};
     if(raw.version===2){
+      if(raw.bridgeVersion!==undefined&&(!Number.isInteger(raw.bridgeVersion)||raw.bridgeVersion<1||raw.bridgeVersion>1000000))throw Error('Version de passerelle invalide.');
+      if(raw.bridgeVersion!==undefined)result.bridgeVersion=raw.bridgeVersion;
       if(raw.source!=='health-connect'||!Array.isArray(raw.sources)||raw.sources.length>100||raw.sources.some(s=>typeof s!=='string'||!s||s.length>200)||!Array.isArray(raw.sessions)||raw.sessions.length>500||!raw.permissions||['sessions','activeCalories','steps','total'].some(k=>typeof raw.permissions[k]!=='boolean'))throw Error('Import multisource invalide.');
       result.sources=[...new Set(raw.sources)].sort();result.permissions=Object.fromEntries(['sessions','activeCalories','steps','total'].map(k=>[k,raw.permissions[k]]));
       result.sessions=raw.sessions.map(s=>{const clean=S.validate(s);if(Date.parse(s.start)<start||Date.parse(s.start)>=end||Date.parse(s.end)>captured+300000)throw Error('Séance hors période.');return clean;});
