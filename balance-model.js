@@ -1,7 +1,9 @@
 (function(root){
   'use strict';
   const S=typeof module!=='undefined'&&module.exports?require('./session-model.js'):root.EquilibreSessions;
+  const R=typeof module!=='undefined'&&module.exports?require('./routine-model.js'):root.EquilibreRoutine;
   function activities(day,sessions=[],resting=null,state={}){
+    if(day.routine&&day.maintenance==null)return R.calculate(day,sessions,resting,state);
     const done=(day.activities||[]).filter(a=>a.state==='done'),manual=[...done.map(a=>a.kcal),...(day.walkingKcal!==null&&day.walkingKcal!==undefined?[day.walkingKcal]:[])],known=manual.filter(n=>n!==null);
     if(sessions.length)return {...S.energySummary(sessions,resting),source:'imported',manualCount:manual.length};
     if(manual.length)return {kcal:known.length?Math.round(known.reduce((a,b)=>a+b,0)):null,count:done.length,missing:manual.length-known.length,estimated:false,overlap:false,source:'manual',manualCount:0};

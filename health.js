@@ -34,7 +34,7 @@
       const [health,bridge]=await Promise.all([client.from('health_snapshots').select('payload').eq('user_id',owner).gte('day',since).order('day',{ascending:false}).limit(3000),client.from('health_bridge_devices').select('id,name,created_at,revoked_at,last_seen_at').eq('user_id',owner).order('created_at',{ascending:false})]);
       if(current!==epoch)return;if(health.error)throw health.error;if(bridge.error)throw bridge.error;
       const next=health.data.map(r=>H.validateSnapshot(r.payload));snapshots=next;devices=bridge.data;lastError='';
-      localStorage.setItem(cacheKey,JSON.stringify({snapshots}));refresh();
+      localStorage.setItem(cacheKey,JSON.stringify({snapshots:snapshots.filter(s=>s.day>=new Date(Date.now()-7*86400000).toISOString().slice(0,10))}));refresh();
     }catch(e){if(current===epoch){lastError='Données Santé Connect non actualisées : '+e.message;refresh();}}
     finally{busy=false;}
   }
@@ -42,7 +42,7 @@
     const s=combined.find(s=>s.day===date);
     const p=H.project({day:{...day,resting:window.Journal?.profile().resting},date,today:window.Journal?.today()||new Date().toLocaleDateString('en-CA'),snapshot:s,history:combined});
     if(day.maintenance==null&&day.base!=null){
-      const a=window.EquilibreBalance.activities(day,S.dedupe(s?.sessions||[]),window.Journal?.profile().resting,{available:s?.permissions?.sessions===true});
+      const a=window.EquilibreBalance.activities(day,S.dedupe(s?.sessions||[]),window.Journal?.profile().resting,activityState(date));
       const e=window.EquilibreBalance.expenditure(day,a);
       return {...p,expense:e.expense,remaining:null,status:e.method,reason:e.method==='manual'?'Le total quotidien saisi remplace la base et toutes les activités.':a.kcal===null?'Base hors sport conservée provisoirement : les calories d’activité ne sont pas encore disponibles.':`Base hors sport de ${fmt(day.base)} kcal + ${fmt(a.kcal)} kcal d’activités retenues. Les séances prévues et les pas ordinaires ne sont pas ajoutés. Les totaux cumulés importés restent informatifs dans ce mode.`};
     }
@@ -53,7 +53,27 @@
     }return p;
   }
   const sessionsOn=date=>S.dedupe(combined.find(s=>s.day===date)?.sessions||[]);
+  function activityState(date){const s=combined.find(s=>s.day===date),j=window.Journal?.snapshot();return {available:s?.permissions?.sessions===true,weight:j?window.Equilibre.latestWeight(j.profile,j.days,date)?.weight:null,zone:s?.zone,movement:s?.permissions?.steps===true?s.movement:undefined};}
   const node=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
+  function renderRoutine(day,date){
+    const panel=$('routine-activity-panel');panel.hidden=!day.routine||day.maintenance!=null;if(panel.hidden)return;
+    const state=activityState(date),a=window.EquilibreBalance.activities(day,sessionsOn(date),window.Journal?.profile().resting,state),box=$('routine-activities');box.replaceChildren();
+    $('routine-activity-status').textContent=!a.walkingAvailable?'Détection des marches en attente : installe la dernière version d’Équilibre Connect, autorise les pas puis synchronise. Les séances déjà reçues restent utilisées.':`${a.walkCount} marche(s) hors séance détectée(s). Seuil : ${day.routine.minWalkMinutes} min, petites pauses jusqu’à 2 min. ${a.coarseMinutes?`${a.coarseMinutes} minute(s) avec des données trop agrégées : aucune marche n’en est déduite.`:'Les minutes qui recouvrent une séance ne sont pas ajoutées.'}`;
+    const clock=iso=>new Date(iso).toLocaleTimeString('fr-FR',{timeZone:state.zone||'Europe/Paris',hour:'2-digit',minute:'2-digit'});
+    for(const d of a.details){
+      if(d.kind==='walk'&&d.minutes===0)continue;
+      const card=node('article');card.className='imported-session';card.append(node('h3',d.title),node('small',`${clock(d.start)}–${clock(d.end)}`));
+      const shownRaw=Math.round(d.raw+1e-8),shownAdded=Math.round(d.added+1e-8);
+      card.append(node('p',d.excluded?'Non ajoutée : ses calories recouvrent déjà une autre séance.':d.missing?'Calories indisponibles : aucun supplément inventé.':`≈ ${fmt(shownRaw)} kcal retenues − ${fmt(shownRaw-shownAdded)} kcal déjà comprises = +${fmt(shownAdded)} kcal au bilan.`));
+      if(d.kind==='walk'){
+        card.append(node('small',`${fmt(d.minutes)} min hors séance · ${fmt(d.steps)} pas${d.blockedMinutes?` · ${fmt(d.blockedMinutes)} min recouvrant une séance, exclues`:''}${d.unknownMinutes?` · ${fmt(d.unknownMinutes)} min sans estimation exploitable`:''}.`));
+        card.append(node('p',d.bases.includes('duration')?'Estimation indicative : durée de marche × 2,8 MET (marche lente supposée) × poids, moins le repos. La vitesse n’est pas mesurée pour ces minutes.':d.bases.includes('distance')?'Estimation indicative d’après la distance et la durée reçues, avec une intensité de marche de référence et le poids du profil.':'Calories actives reçues sur ces minutes.'));
+      }
+      const label=node('label','Classement de ce créneau'),select=node('select');select.disabled=d.excluded===true;select.setAttribute('aria-label',`Classement : ${d.title} à ${clock(d.start)}`);
+      for(const [value,text] of [['auto','Automatique selon mon profil'],['baseline','Compris dans ma journée habituelle'],['extra','Activité supplémentaire']]){const option=node('option',text);option.value=value;select.append(option);}select.value=d.choice;select.onchange=()=>window.Journal.setMovementChoice(d.key,select.value);label.append(select);card.append(label);box.append(card);
+    }
+    if(!a.details.length)box.append(node('p','Aucun créneau à détailler pour cette date.'));
+  }
   function renderSessions(date){
     const snapshot=combined.find(s=>s.day===date),sessions=sessionsOn(date),box=$('imported-activities');box.replaceChildren();
     const journal=window.Journal?.snapshot(),knownWeight=journal?window.Equilibre.latestWeight(journal.profile,journal.days,date):null,resting=journal?.profile.resting,excluded=S.excludedEnergy(sessions,resting);
@@ -113,10 +133,11 @@
     },
     project:projection,
     sessions:sessionsOn,dates:()=>combined.map(s=>s.day),steps:date=>combined.find(s=>s.day===date)?.steps??null,
-    activityState:date=>({available:combined.find(s=>s.day===date)?.permissions?.sessions===true}),
+    activityState,
     render(day,date){
       const p=projection(day,date),baseMode=day.maintenance==null&&day.base!=null,adaptive=day.adaptive===true||baseMode;
       renderSessions(date);
+      renderRoutine(day,date);
       $('health-observed').textContent=fmt(p.observed)+' kcal';$('health-remaining').textContent=fmt(p.remaining)+' kcal';
       $('health-projection').textContent=fmt(p.expense)+' kcal';
       $('health-badge').textContent=({reference:'Maintien conservé',base:'Base hors sport + activités',activity:'Maintien + supplément d’activité',manual:'Total saisi',projected:'Projection provisoire',complete:'Journée complète'})[p.status];

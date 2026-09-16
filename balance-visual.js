@@ -12,7 +12,7 @@
     $('balance-food-status').textContent=p.remaining===null?'Repas ou objectif à renseigner':p.remaining>0?`${fmt(p.remaining)} kcal avant l’objectif`:p.remaining<0?`${fmt(-p.remaining)} kcal au-dessus de l’objectif`:'Objectif alimentaire atteint';
     $('balance-activity-title').textContent='Activité retenue';
     $('balance-active-value').textContent=(a.estimated&&a.kcal!==null?'≈ ':'')+fmt(a.kcal);
-    $('balance-active-unit').textContent=a.unclassified?'kcal de séances':'kcal actives';
+    $('balance-active-unit').textContent=day.routine&&day.maintenance==null?'kcal ajoutées':a.unclassified?'kcal de séances':'kcal actives';
     const scale=Math.max(a.kcal??0,e.included??0,1),hasEnvelope=e.included!==null,baseMode=e.base!==null;
     $('balance-active-bar').style.width=(hasEnvelope?Math.min(a.kcal??0,e.included)/scale*100:(p.activityRatio??0)*100)+'%';
     $('balance-extra-bar').style.width=(hasEnvelope?(e.excess??0)/scale*100:0)+'%';
@@ -26,6 +26,7 @@
     $('balance-included').textContent=e.included===null?'À renseigner':fmt(e.included)+' kcal';
     $('balance-envelope-note').hidden=baseMode?e.method!=='base':e.method!=='activity';
     $('balance-envelope-note').textContent=baseMode?(a.kcal===null?'Base seule provisoire : activité encore inconnue. Les séances reçues ou réalisées s’ajouteront sans seuil.':'La base comprend le repos, la digestion et les mouvements ordinaires. Les activités supplémentaires retenues s’ajoutent sans seuil.'):'Activité incluse : hypothèse à calibrer avec le maintien et les tendances de poids. Le maintien reste inchangé sous ce seuil. Ce repère est distinct du déficit cible.';
+    if(baseMode&&day.routine){$('balance-activity-title').textContent='Supplément net d’activité';$('balance-active-detail').textContent=`${a.count} activité(s) retenue(s), dont ${a.walkCount} marche(s) hors séance`;if(a.kcal!==null)$('balance-envelope-note').textContent=`${fmt(a.rawKcal)} kcal retenues − ${fmt(a.rawKcal-a.kcal)} kcal déjà comprises dans la journée habituelle = +${fmt(a.kcal)} kcal ajoutées.`;}
     $('balance-adjustment-label').textContent=['manual','projected','complete'].includes(e.method)?'Ajustement du total':baseMode?'Activités supplémentaires':'Supplément d’activité';
     const approximate=e.method==='base'||e.method==='activity'&&e.provisional?'≈ ':'';
     $('balance-adjustment').textContent=e.method==='base'&&e.adjustment===null?'À compléter':(['base','activity'].includes(e.method)&&(a.estimated||a.unclassified)?'≈ ':'')+signed(e.adjustment)+' kcal';
@@ -37,6 +38,9 @@
     const notes=[];
     if(completed!==null&&completed<4)notes.push(`${completed}/4 repas renseignés : bilan provisoire.`);
     if(a.missing)notes.push('Calories d’activité incomplètes.');
+    if(baseMode&&day.routine&&!a.walkingAvailable)notes.push('Marches hors séances : en attente des données par minute de la nouvelle passerelle.');
+    if(a.coarseMinutes)notes.push('Certains pas sont trop agrégés pour reconnaître une marche.');
+    if(a.uncorrected)notes.push('Part habituelle non déduite de certaines saisies : durée, poids ou métabolisme manquants.');
     if(a.unclassified)notes.push('Urevo : nature des calories à confirmer ; supplément estimé provisoire.');
     if(a.restAdjusted)notes.push('≈ : repos retiré du total de séance pour les autres sources.');
     if(a.overlap)notes.push('≈ : créneaux qui se chevauchent comptés une fois.');

@@ -58,6 +58,7 @@ class HealthReader(context: Context) {
         // No origin filter: collect every app, including future devices.
         val totals=if(totalPermission in granted)records<TotalCaloriesBurnedRecord>(first,now) else emptyList()
         val sessions=if(sessionPermission in granted)records<ExerciseSessionRecord>(first,now) else emptyList()
+        val stepRecords=if(stepsPermission in granted)records<StepsRecord>(first,now) else emptyList()
         val activeRecords=if(activePermission in granted)records<ActiveCaloriesBurnedRecord>(first,now).map { EnergyInterval(it.startTime,it.endTime,it.energy.inKilocalories,it.metadata.lastModifiedTime,it.metadata.dataOrigin.packageName) } else emptyList()
         val distances=if(distancePermission in granted)records<DistanceRecord>(first,now).map { DistanceInterval(it.metadata.id,it.metadata.dataOrigin.packageName,it.startTime,it.endTime,it.distance.inMeters,it.metadata.lastModifiedTime) } else emptyList()
         val speeds=if(speedPermission in granted)records<SpeedRecord>(first,now).flatMap { record->record.samples.map { SpeedPoint(record.metadata.id,record.metadata.dataOrigin.packageName,it.time,it.speed.inMetersPerSecond*3.6,record.metadata.lastModifiedTime) } } else emptyList()
@@ -78,6 +79,22 @@ class HealthReader(context: Context) {
                 bins.put(JSONObject().put("start",cursor.toString()).put("end",next.toString()).put("total",value ?: JSONObject.NULL).put("covered",if(value==null)0 else coverage.covered).put("maxRecordSeconds",coverage.maxRecordSeconds));cursor=next
             }
             val stepsResult=if(stepsPermission in granted)client.aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL),TimeRangeFilter.between(start,until))) else null
+            // Health Connect chooses one source for overlapping steps. Keep minute detail,
+            // but retain raw precision: a daily total must never become an invented walk.
+            val movement=JSONArray()
+            if(stepsPermission in granted) {
+                val daySteps=stepRecords.filter { it.startTime<until&&it.endTime>start }.map { StepInterval(it.startTime,it.endTime,it.metadata.dataOrigin.packageName,it.count) }
+                val minuteSteps=client.aggregateGroupByDuration(AggregateGroupByDurationRequest(setOf(StepsRecord.COUNT_TOTAL),TimeRangeFilter.between(start,until),Duration.ofMinutes(1)))
+                for(bucket in minuteSteps) {
+                    val count=bucket.result[StepsRecord.COUNT_TOTAL] ?: continue
+                    if(count<=0)continue
+                    val origins=bucket.result.dataOrigins.map { it.packageName }.sorted()
+                    val precision=MovementPrecision.seconds(bucket.startTime,bucket.endTime,origins.toSet(),daySteps)
+                    val active=origins.firstNotNullOfOrNull { EnergyIntervals.sessionTotalForSource(it,bucket.startTime,bucket.endTime,activeRecords) }
+                    val distance=origins.firstNotNullOfOrNull { source->EnergyIntervals.sessionTotal(bucket.startTime,bucket.endTime,distances.filter { it.source==source }.map { EnergyInterval(it.start,it.end,it.meters,it.modified) }) }
+                    movement.put(JSONObject().put("start",bucket.startTime.toString()).put("end",bucket.endTime.toString()).put("steps",count).put("precisionSeconds",precision).put("sources",JSONArray(origins)).put("activeKcal",active ?: JSONObject.NULL).put("distanceMeters",distance ?: JSONObject.NULL))
+                }
+            }
             val daySessions=sessions.filter { it.startTime>=start&&it.startTime<end&&it.endTime<=now }
             require(daySessions.size<=500) { "Plus de 500 séances sur une journée : transfert arrêté sans supprimer les imports." }
             val sessionJson=JSONArray()
@@ -90,7 +107,9 @@ class HealthReader(context: Context) {
             }
             val origins=(totals.filter { it.startTime<until&&it.endTime>start }.map { it.metadata.dataOrigin.packageName }+daySessions.map { it.metadata.dataOrigin.packageName }+(stepsResult?.dataOrigins?.map { it.packageName } ?: emptyList())).distinct().sorted()
             val permissions=JSONObject().put("total",totalPermission in granted).put("steps",stepsPermission in granted).put("sessions",sessionPermission in granted).put("activeCalories",activePermission in granted).put("distance",distancePermission in granted).put("speed",speedPermission in granted)
-            result.put(JSONObject().put("version",2).put("bridgeVersion",bridgeVersion).put("day",day.toString()).put("source","health-connect").put("sources",JSONArray(origins)).put("permissions",permissions).put("sessions",sessionJson).put("zone",zone.id).put("capturedAt",now.toString()).put("start",start.toString()).put("end",end.toString()).put("bins",bins).put("steps",stepsResult?.get(StepsRecord.COUNT_TOTAL) ?: JSONObject.NULL))
+            val snapshot=JSONObject().put("version",2).put("bridgeVersion",bridgeVersion).put("day",day.toString()).put("source","health-connect").put("sources",JSONArray(origins)).put("permissions",permissions).put("sessions",sessionJson).put("zone",zone.id).put("capturedAt",now.toString()).put("start",start.toString()).put("end",end.toString()).put("bins",bins).put("steps",stepsResult?.get(StepsRecord.COUNT_TOTAL) ?: JSONObject.NULL)
+            if(stepsPermission in granted)snapshot.put("movement",JSONObject().put("version",1).put("bins",movement))
+            result.put(snapshot)
         }
         return result
     }

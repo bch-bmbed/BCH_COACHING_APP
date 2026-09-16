@@ -23,6 +23,11 @@
       result.sources=[...new Set(raw.sources)].sort();result.permissions=Object.fromEntries(['sessions','activeCalories','steps','total'].map(k=>[k,raw.permissions[k]]));
       for(const key of ['distance','speed'])if(raw.permissions[key]!==undefined){if(typeof raw.permissions[key]!=='boolean')throw Error('Autorisation de mouvement invalide.');result.permissions[key]=raw.permissions[key];}
       result.sessions=raw.sessions.map(s=>{const clean=S.validate(s);if(Date.parse(s.start)<start||Date.parse(s.start)>=end||Date.parse(s.end)>captured+300000)throw Error('Séance hors période.');return clean;});
+      if(raw.movement!==undefined){
+        const m=raw.movement;if(!m||m.version!==1||!Array.isArray(m.bins)||m.bins.length>1500)throw Error('Détail des pas invalide.');let last=start;
+        result.movement={version:1,bins:m.bins.map(b=>{const a=Date.parse(b.start),z=Date.parse(b.end);if(!stamp(b.start)||!stamp(b.end)||a<last||z<=a||z>end||z>captured+1000||z-a>60001||!Number.isInteger(b.steps)||b.steps<0||b.steps>400||!Number.isFinite(b.precisionSeconds)||b.precisionSeconds<0||b.precisionSeconds>7*86400||!Array.isArray(b.sources)||b.sources.length>100||b.sources.some(s=>typeof s!=='string'||!s||s.length>200))throw Error('Créneau de marche invalide.');
+          for(const [field,max] of [['distanceMeters',1000],['activeKcal',100]])if(!(b[field]===null||Number.isFinite(b[field])&&b[field]>=0&&b[field]<=max))throw Error('Mesure de marche invalide.');last=z;return {start:b.start,end:b.end,steps:b.steps,precisionSeconds:b.precisionSeconds,sources:[...new Set(b.sources)].sort(),distanceMeters:b.distanceMeters,activeKcal:b.activeKcal};})};
+      }
     }return result;
   }
   const total=s=>s.bins.reduce((n,b)=>n+(b.total??0),0);

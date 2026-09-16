@@ -25,6 +25,7 @@ function showView(fragment, focus = false) {
   $('save-button').textContent = id === 'activites' ? (editingActivityId?'Enregistrer la séance':'+ Ajouter la séance') : 'Enregistrer la journée';
   if (fragment === 'sources') $('sources').open = true;
   if (focus) { $(id + '-title').focus({preventScroll: true}); window.scrollTo({top: 0, behavior: 'instant'}); }
+  if(window.Journal)renderSummary();
 }
 function navigateView(fragment) {
   if (location.hash !== '#' + fragment) history.pushState(null, '', '#' + fragment);
@@ -65,6 +66,7 @@ catch { locked = true; storageFailure('La sauvegarde locale est inaccessible ou 
 $('date').min = '1900-01-01'; $('date').max = '2100-12-31';
 function draft() {
   const day = structuredClone(data.days[selected]||M.blankDay());
+  day.routineDay=$('routine-day').value;
   for (const [key, id] of Object.entries(ids)) day[key] = $(id).value === '' ? null : Number($(id).value);
   for(const key of Object.keys(M.mealNames))day.meals[key]={kcal:$('meal-'+key).value===''?null:Number($('meal-'+key).value),note:$('meal-note-'+key).value};
   day.intakeMode=intakeMode;day.intake=intakeMode==='legacy'?legacyIntake:M.mealSummary(day).total;
@@ -73,6 +75,7 @@ function draft() {
 function persist(next,dayBase=cloudBase,profileBase=cloudProfileBase){localStorage.setItem(KEY,JSON.stringify({...next,cloudBase:dayBase,cloudProfileBase:profileBase}));}
 function renderProfileCalculation(){
   const average=$('profile-mode').value!=='base';
+  $('routine-settings').hidden=average;
   $('profile-maintenance-field').hidden=!average;$('profile-base-field').hidden=average;$('profile-target-field').hidden=average;
   $('profile-maintenance').disabled=!average;$('profile-base').disabled=average;$('profile-target').disabled=average;
   $('profile-included-field').hidden=!average;$('profile-included-activity').disabled=!average;
@@ -92,7 +95,11 @@ function renderProfile(){
   $('profile-resting').value=data.profile.resting??'';
   const goals=M.goalsAt(data.profile,localDate())||M.blankGoals();
   for(const [key,id] of Object.entries(profileIds))$(id).value=goals[key]??'';
-  $('profile-mode').value=goals.adaptive?'adaptive':goals.maintenance!==null?'maintenance':'base';renderProfileCalculation();
+  $('profile-mode').value=goals.adaptive?'adaptive':goals.maintenance!==null?'maintenance':'base';
+  const routine=goals.routine||window.EquilibreRoutine.defaults();$('profile-routine-enabled').checked=Boolean(goals.routine);$('profile-work-type').value=routine.type;$('profile-work-met').value=routine.workMet;$('profile-off-base').value=routine.offBase??'';$('profile-walk-minutes').value=routine.minWalkMinutes;
+  for(const box of $('profile-work-days').querySelectorAll('input'))box.checked=routine.workDays.includes(Number(box.value));
+  const clock=minute=>minute===undefined?'':`${String(Math.floor(minute/60)).padStart(2,'0')}:${String(minute%60).padStart(2,'0')}`;
+  for(let i=1;i<=2;i++){ $('profile-work-start-'+i).value=clock(routine.periods[i-1]?.[0]);$('profile-work-end-'+i).value=clock(routine.periods[i-1]?.[1]);}renderProfileCalculation();
   const latest=M.latestWeight(data.profile,data.days,localDate());
   $('profile-weight').value=latest?.weight??'';$('profile-weight-date').value=localDate();
   $('profile-weight-known').textContent=latest?`Dernière pesée : ${fmt(latest.weight)} kg · ${latest.date.split('-').reverse().join('/')}`:'Aucune pesée enregistrée.';
@@ -109,6 +116,12 @@ function saveProfile(){
       goals.target=gap!==null&&gap>=0?gap:null;
     }else {goals.maintenance=null;goals.includedActivity=null;}
     goals.adaptive=$('profile-mode').value==='adaptive';
+    goals.routine=null;
+    if($('profile-mode').value==='base'&&$('profile-routine-enabled').checked){
+      const periods=[],minutes=value=>Number(value.slice(0,2))*60+Number(value.slice(3));
+      for(let i=1;i<=2;i++){const a=$('profile-work-start-'+i).value,b=$('profile-work-end-'+i).value;if(Boolean(a)!==Boolean(b))throw Error('Complète le début et la fin de chaque plage de travail.');if(a)periods.push([minutes(a),minutes(b)]);}
+      goals.routine=window.EquilibreRoutine.validate({version:1,type:$('profile-work-type').value,workDays:[...$('profile-work-days').querySelectorAll('input:checked')].map(b=>Number(b.value)),periods,workMet:Number($('profile-work-met').value),offBase:$('profile-off-base').value===''?null:Number($('profile-off-base').value),minWalkMinutes:Number($('profile-walk-minutes').value)});
+    }
     if(JSON.stringify(goals)!==JSON.stringify(M.goalsAt(next.profile,localDate())||M.blankGoals())){
       // A new setting applies from today, including any dates planned in the old journal.
       for(const date of Object.keys(next.profile.goals))if(date>localDate())delete next.profile.goals[date];
@@ -138,6 +151,7 @@ function markDirty() { dirty = true; $('save-state').textContent = 'Modification
 function showDay(date) {
   selected = date; $('date').value = date;
   const day = data.days[date] || M.blankDay();editingActivityId=null;
+  $('routine-day').value=day.routineDay??'auto';
   for (const [key, id] of Object.entries(ids)) $(id).value = day[key] ?? '';
   $('weight').value=M.weightOn(data.profile,data.days,date)??'';
   for(const key of Object.keys(M.mealNames)){$('meal-'+key).value=day.meals[key].kcal??'';$('meal-note-'+key).value=day.meals[key].note;}
@@ -159,7 +173,7 @@ function metric(id, value) {
   if (value !== null) { const unit = document.createElement('em'); unit.textContent = 'kcal'; $(id).append(unit); }
 }
 function balanceFor(day,date){
-  if(day.maintenance==null&&day.base!==null)return window.EquilibreBalance.baseBalance(day,window.HealthBridge?.sessions(date)||[],data.profile.resting,window.HealthBridge?.activityState(date)||{});
+  if(day.maintenance==null&&day.base!==null)return window.EquilibreBalance.baseBalance(day,window.HealthBridge?.sessions(date)||[],data.profile.resting,activityState(date));
   const b=M.balance(day);
   if(day.adaptive&&window.HealthBridge){
     const p=window.HealthBridge.project(day,date),expense=p.expense;
@@ -167,6 +181,7 @@ function balanceFor(day,date){
     return {plannedExpense:expense,actualExpense:expense,planned:expense===null||budget===null?null:expense-budget,actual:expense===null||day.intake===null?null:expense-day.intake};
   }return b;
 }
+function activityState(date){return window.HealthBridge?.activityState(date)||{weight:M.latestWeight(data.profile,data.days,date)?.weight};}
 function renderSummary() {
   const day = M.effectiveDay(draft(),data.profile,selected), b = balanceFor(day,selected);
   const health=window.HealthBridge?.render(day,selected);
@@ -174,8 +189,11 @@ function renderSummary() {
   $('resting-summary').textContent=data.profile.resting===null?'':`Métabolisme de base du profil : ${fmt(data.profile.resting)} kcal/j · au repos`;
   $('resting-summary').hidden=data.profile.resting===null;
   const average=goals.maintenance!==null;
-  $('goals-summary').textContent=average?`Maintien moyen : ${fmt(goals.maintenance)} kcal/j · Apports prévus : ${fmt(goals.plannedIntake)} kcal/j`:`Base hors sport : ${fmt(goals.base)} kcal/j · Déficit cible : ${fmt(goals.target)} kcal/j · Objectif sans sport : ${fmt(goals.base!==null&&goals.target!==null?Math.max(0,goals.base-goals.target):goals.plannedIntake)} kcal`;
-  $('activity-calculation').textContent=average?(goals.adaptive&&goals.includedActivity!==null?`Hypothèse du profil : ${fmt(goals.includedActivity)} kcal d’activité déjà comprises dans le maintien. Seul le dépassement s’ajoute à cette référence, sauf si un total quotidien fiable remplace le calcul. Les plages Google Fit englobant une séance d’une autre source ne sont pas ajoutées.`:'Ton maintien inclut déjà le sport et la marche habituels. Un total quotidien de montre remplace cette estimation.'):'Les séances réalisées et la marche supplémentaire retenues s’ajoutent à la base hors sport, sans seuil. Les activités seulement prévues n’augmentent pas encore le budget. Les mouvements ordinaires sont déjà compris dans la base ; les pas seuls ne sont pas convertis en calories.';
+  $('routine-day-box').hidden=!day.routine||average||!['bilan','activites'].some(id=>!$(id).hidden);
+  $('routine-day-summary').textContent=day.routine?`${window.EquilibreRoutine.workDay(day.routine,selected,day.routineDay)?window.EquilibreRoutine.types[day.routine.type]:'Journée sans travail'} · base ${fmt(day.base)} kcal. Les horaires se règlent dans Compte.`:'';
+  $('routine-day-label').textContent=day.routine?window.EquilibreRoutine.workDay(day.routine,selected,day.routineDay)?window.EquilibreRoutine.types[day.routine.type]:'Journée sans travail':'Profil de cette journée';
+  $('goals-summary').textContent=average?`Maintien moyen : ${fmt(goals.maintenance)} kcal/j · Apports prévus : ${fmt(goals.plannedIntake)} kcal/j`:`Base hors sport : ${fmt(day.base)} kcal/j · Déficit cible : ${fmt(goals.target)} kcal/j · Objectif sans sport : ${fmt(day.base!==null&&goals.target!==null?Math.max(0,day.base-goals.target):goals.plannedIntake)} kcal`;
+  $('activity-calculation').textContent=day.routine&&!average?'La base comprend ta journée habituelle. Pour chaque activité, on retire la part déjà prévue pendant ce créneau ; seul le supplément augmente le budget. Les marches détectées pendant un travail debout, mobile ou physique sont comprises dans la base par défaut. Tu peux corriger ce classement ci-dessous.':average?(goals.adaptive&&goals.includedActivity!==null?`Hypothèse du profil : ${fmt(goals.includedActivity)} kcal d’activité déjà comprises dans le maintien. Seul le dépassement s’ajoute à cette référence, sauf si un total quotidien fiable remplace le calcul. Les plages Google Fit englobant une séance d’une autre source ne sont pas ajoutées.`:'Ton maintien inclut déjà le sport et la marche habituels. Un total quotidien de montre remplace cette estimation.'):'Les séances réalisées et la marche supplémentaire retenues s’ajoutent à la base hors sport, sans seuil. Les activités seulement prévues n’augmentent pas encore le budget. Les mouvements ordinaires sont déjà compris dans la base ; les pas seuls ne sont pas convertis en calories.';
   const known=M.latestWeight(data.profile,data.days,selected);
   $('known-weight').textContent=known?`Dernier poids connu : ${fmt(known.weight)} kg · pesée du ${known.date.split('-').reverse().join('/')}`:'Poids à renseigner dans ton profil ou dans Suivi.';
   const meals=M.mealSummary(day);$('intake').textContent=fmt(day.intake);
@@ -192,7 +210,7 @@ function renderSummary() {
   const intakeTarget=Object.hasOwn(b,'intakeTarget')?b.intakeTarget:day.adaptive&&b.plannedExpense!==null&&day.target!==null?Math.max(0,b.plannedExpense-day.target):M.dailyIntakeTarget(day,targetExpense);
   $('planned-detail').textContent=day.adaptive||!average?`Avec l’objectif du jour : ${fmt(intakeTarget)} kcal`:'Dépense prévue − apports prévus';
   $('intake-detail').textContent = intakeTarget === null ? 'Objectif calorique du jour à compléter' : `Objectif du jour : ${fmt(intakeTarget)} kcal`;
-  window.BalanceVisual?.render({day,intakeTarget,expense:day.total??b.plannedExpense,sessions:imported,resting:data.profile.resting,state:window.HealthBridge?.activityState(selected)||{},completed:meals.completed,projection:health});
+  window.BalanceVisual?.render({day,intakeTarget,expense:day.total??b.plannedExpense,sessions:imported,resting:data.profile.resting,state:activityState(selected),completed:meals.completed,projection:health});
   $('expenditure-detail').textContent = day.total!==null?'Total quotidien saisi':average?'Maintien moyen · activité habituelle incluse':b.plannedExpense === null ? 'Base hors sport à renseigner' : 'Base hors sport + activités retenues';
   if(day.adaptive)$('expenditure-detail').textContent=health?.status==='projected'?'Projection actualisée pour minuit':health?.status==='complete'?'Total importé de la journée':health?.status==='manual'?'Total saisi manuellement':health?.status==='activity'?'Maintien + supplément d’activité':'Maintien moyen en attente de données';
   const origin = day.total !== null ? 'Total quotidien saisi' : day.adaptive&&health?.status==='projected'?'Projection à minuit':day.adaptive&&health?.status==='complete'?'Total importé':day.adaptive&&health?.status==='activity'?'Maintien + supplément d’activité':average?'Estimation au maintien moyen':'Base + séances réalisées + marche';
@@ -266,6 +284,7 @@ function renderTrends() {
 }
 document.addEventListener('input',e=>{if(e.target.form===$('day-form'))markDirty();});
 $('profile-form').addEventListener('input',e=>{profileDirty=true;if(['profile-weight','profile-weight-date'].includes(e.target.id))profileWeightDirty=true;$('profile-save-state').textContent='Modifications à enregistrer';renderProfileCalculation();});
+$('profile-work-type').addEventListener('change',()=>{$('profile-work-met').value=({desk:1.3,standing:1.8,mobile:2,physical:3})[$('profile-work-type').value];});
 $('profile-form').addEventListener('submit',e=>{e.preventDefault();if(dirty&&!save())return;saveProfile();});
 $('day-form').addEventListener('submit',e=>{e.preventDefault();if(save())window.dispatchEvent(new Event('journal-saved'));});
 $('use-meals').onclick=()=>{intakeMode='meals';$('legacy-intake').hidden=true;markDirty();};
@@ -304,6 +323,11 @@ showDay(selected);
 if (data.days[selected]) announce('Ta dernière saisie a été chargée.');
 // Storage boundary shared with cloud.js. Remote updates never replace an unsaved form.
 window.Journal={
+  setMovementChoice(key,value){
+    const previous=data.days[selected];const next=structuredClone(previous||M.blankDay());
+    if(value==='auto')delete next.movementOverrides[key];else next.movementOverrides[key]=value;
+    data.days[selected]=next;if(!save('Classement de l’activité enregistré.')){if(previous)data.days[selected]=previous;else delete data.days[selected];renderSummary();}
+  },
   today:localDate,refreshHealth(){renderSummary();renderTrends();},
   snapshot:()=>structuredClone(data), base:()=>structuredClone(cloudBase), blocked:()=>locked,
   hasDraft:()=>dirty||profileDirty,

@@ -1,5 +1,6 @@
 (function (root) {
   'use strict';
+  const R=typeof module!=='undefined'&&module.exports?require('./routine-model.js'):root.EquilibreRoutine;
   const sources = {manual: 'Manuelle', garmin: 'Garmin Connect', urevo: 'Urevo', 'google-fit': 'Google Fit', other: 'Autre appareil'};
   const fields = {plannedIntake: 30000, intake: 30000, base: 30000, target: 10000, total: 30000, weight: 600, steps: 200000, walkingKcal: 20000};
   const mealNames = {breakfast: 'Petit déjeuner', lunch: 'Déjeuner', snack: 'Goûter', dinner: 'Dîner'};
@@ -10,13 +11,13 @@
     return !Number.isNaN(+d) && d.toISOString().slice(0, 10) === s;
   }
   function blankDay() {
-    return {schemaVersion: 4, plannedIntake: null, intake: null, base: null, target: null, total: null, weight: null, steps: null, walkingKcal: null, note: '', activities: [], meals: blankMeals(), intakeMode: 'meals'};
+    return {schemaVersion: 4, routineDay:'auto',movementOverrides:{}, plannedIntake: null, intake: null, base: null, target: null, total: null, weight: null, steps: null, walkingKcal: null, note: '', activities: [], meals: blankMeals(), intakeMode: 'meals'};
   }
   function optionalNumber(value, max, min = 0) {
     return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max);
   }
   const goalFields = {plannedIntake: 30000, base: 30000, target: 10000, maintenance:30000,includedActivity:30000};
-  const blankGoals = () => ({plannedIntake:null,base:null,target:null,maintenance:null,includedActivity:null,adaptive:false});
+  const blankGoals = () => ({plannedIntake:null,base:null,target:null,maintenance:null,includedActivity:null,adaptive:false,routine:null});
   const blankProfile = () => ({goals:{},weights:{},resting:null});
   function validateProfile(raw) {
     if(!raw || typeof raw!=='object' || !raw.goals || !raw.weights || Array.isArray(raw.goals) || Array.isArray(raw.weights) || typeof raw.goals!=='object' || typeof raw.weights!=='object' || Object.keys(raw.goals).length>20000 || Object.keys(raw.weights).length>20000)throw Error('Profil invalide.');
@@ -33,7 +34,7 @@
       }
       if(raw.goals[date].adaptive!==undefined&&typeof raw.goals[date].adaptive!=='boolean')throw Error('Mode de projection invalide.');
       if(goals.includedActivity!==null&&(goals.maintenance===null||goals.includedActivity>goals.maintenance))throw Error('L’activité incluse doit être comprise dans le maintien.');
-      goals.adaptive=raw.goals[date].adaptive??false;result.goals[date]=goals;
+      goals.adaptive=raw.goals[date].adaptive??false;goals.routine=R.validate(raw.goals[date].routine);result.goals[date]=goals;
     }
     for(const date of Object.keys(raw.weights).sort()){
       if(!validDate(date) || !optionalNumber(raw.weights[date],600,1))throw Error('Pesée du profil invalide.');
@@ -53,7 +54,9 @@
     return from?{...blankGoals(),...structuredClone(profile.goals[from])}:null;
   }
   function effectiveDay(day,profile,date) {
-    return {...(day||blankDay()),...(goalsAt(profile,date)||{})};
+    const result={...(day||blankDay()),...(goalsAt(profile,date)||{})};
+    if(result.routine&&result.maintenance===null){result.routineDate=date;if(!R.workDay(result.routine,date,result.routineDay)&&result.routine.offBase!==null)result.base=result.routine.offBase;}
+    return result;
   }
   function weightOn(profile,days,date) {
     return Object.hasOwn(profile.weights,date)?profile.weights[date]:(days[date]?.weight??null);
@@ -70,6 +73,9 @@
       if (!validDate(date) || !day || typeof day !== 'object') throw Error('Date ou journée invalide.');
       if (day.schemaVersion !== undefined && day.schemaVersion !== 4) throw Error('Version de journée non reconnue pour ' + date + '.');
       const clean = blankDay();
+      clean.routineDay=day.routineDay??'auto';if(!['auto','work','off'].includes(clean.routineDay))throw Error('Type de journée invalide.');
+      const overrides=day.movementOverrides??{};if(!overrides||typeof overrides!=='object'||Array.isArray(overrides)||Object.keys(overrides).length>500)throw Error('Choix des déplacements invalides.');
+      for(const [key,value] of Object.entries(overrides)){if(!/^(session|walk):[0-9TZ:.+\-]+:[0-9TZ:.+\-]+$/.test(key)||key.length>120||!['extra','baseline'].includes(value))throw Error('Choix de déplacement invalide.');clean.movementOverrides[key]=value;}
       for (const [key, max] of Object.entries(fields)) {
         const value = ['steps','walkingKcal'].includes(key) ? (day[key] ?? null) : day[key];
         if (!optionalNumber(value, max, key === 'weight' ? 1 : 0)) throw Error('Valeur invalide pour ' + date + ' : ' + key);

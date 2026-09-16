@@ -59,6 +59,10 @@
     }
     return {kcal:known.length?Math.round(total):sessions.length?null:0,count:values.length,receivedCount:sessions.length,excludedCount:excluded.size,missing:values.length-known.length,estimated:used.has('derived')||overlap,restAdjusted:used.has('derived'),unclassified:used.has('source'),overlap};
   }
+  function energyTimeline(sessions,resting){
+    const excluded=excludedEnergy(sessions,resting),values=sessions.filter(s=>!excluded.has(key(s))).map(s=>({...energy(s,resting),key:key(s)})).filter(v=>v.kcal!==null),points=[...new Set(values.flatMap(v=>[Date.parse(v.start),Date.parse(v.end)]))].sort((a,b)=>a-b),priority={active:0,source:1,derived:2},result=[];
+    for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i],v=values.filter(v=>Date.parse(v.start)<=a&&Date.parse(v.end)>=b).sort((x,y)=>priority[x.basis]-priority[y.basis]||(Date.parse(x.end)-Date.parse(x.start))-(Date.parse(y.end)-Date.parse(y.start))||x.key.localeCompare(y.key))[0];if(v)result.push({...v,start:new Date(a).toISOString(),end:new Date(b).toISOString(),kcal:v.kcal*(b-a)/(Date.parse(v.end)-Date.parse(v.start))});}return result;
+  }
   function excludedEnergy(sessions,resting){
     const result=new Map(),fit='com.google.android.apps.fitness';
     for(const s of sessions){
@@ -87,5 +91,5 @@
     const grossKcal=met*weight*m.minutes/60,restKcal=resting*m.minutes/1440;
     return {minutes:m.minutes,weight,resting,speed,incline:0,met,speedBand:[low,high],source:m.source,basis:m.distanceMeters!==null?'distance':'samples',samples:m.samples,distanceMeters:m.distanceMeters,grossKcal,restKcal,activeKcal:Math.max(0,grossKcal-restKcal)};
   }
-  const api={validate,dedupe,labels,energy,energySummary,isUnclassifiedSource,walkingReference,motion,excludedEnergy,key};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreSessions=api;
+  const api={validate,dedupe,labels,energy,energySummary,energyTimeline,isUnclassifiedSource,walkingReference,motion,excludedEnergy,key};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.EquilibreSessions=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
