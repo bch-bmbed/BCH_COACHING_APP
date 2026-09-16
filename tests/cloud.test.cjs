@@ -91,3 +91,15 @@ test('un maintien de compte passe du PC au téléphone sans doubler une activit�
   phone.edit(d=>{d.meals.lunch.kcal=2400;d.activities.push({id:'a',name:'Sport',minutes:40,kcal:350,state:'done',source:'manual'});});await phone.sync();await pc.sync();
   assert.deepEqual(pc.snapshot(),phone.snapshot());assert.equal(M.balance(M.effectiveDay(pc.snapshot().days[date],pc.snapshot().profile,date)).actual,350);
 });
+
+test('passage daté à la base hors sport : les appareils gardent le passé et leurs repas',async()=>{
+ const initial=M.validateProfile({goals:{[date]:{base:null,maintenance:2700,plannedIntake:2450,target:250,adaptive:true,includedActivity:300}},weights:{},resting:1800});
+ const server={rows:new Map(),profile:{revision:1,payload:initial}},pc=await device(server),phone=await device(server);
+ pc.editProfile(p=>p.goals['2026-09-16']={base:2400,maintenance:null,plannedIntake:2150,target:250,adaptive:false,includedActivity:null});
+ phone.edit(d=>d.meals.lunch.kcal=650);
+ await pc.sync();await phone.sync();await pc.sync();
+ assert.deepEqual(pc.snapshot(),phone.snapshot());assert.equal(pc.snapshot().days[date].intake,650);
+ assert.equal(M.goalsAt(pc.snapshot().profile,date).maintenance,2700);
+ assert.equal(M.goalsAt(pc.snapshot().profile,'2026-09-16').base,2400);
+ assert.equal(M.goalsAt(pc.snapshot().profile,'2026-09-16').includedActivity,null);
+});

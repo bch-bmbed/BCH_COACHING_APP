@@ -41,6 +41,11 @@
   function projection(day,date){
     const s=combined.find(s=>s.day===date);
     const p=H.project({day:{...day,resting:window.Journal?.profile().resting},date,today:window.Journal?.today()||new Date().toLocaleDateString('en-CA'),snapshot:s,history:combined});
+    if(day.maintenance==null&&day.base!=null){
+      const a=window.EquilibreBalance.activities(day,S.dedupe(s?.sessions||[]),window.Journal?.profile().resting,{available:s?.permissions?.sessions===true});
+      const e=window.EquilibreBalance.expenditure(day,a);
+      return {...p,expense:e.expense,remaining:null,status:e.method,reason:e.method==='manual'?'Le total quotidien saisi remplace la base et toutes les activités.':a.kcal===null?'Base hors sport conservée provisoirement : les calories d’activité ne sont pas encore disponibles.':`Base hors sport de ${fmt(day.base)} kcal + ${fmt(a.kcal)} kcal d’activités retenues. Les séances prévues et les pas ordinaires ne sont pas ajoutés. Les totaux cumulés importés restent informatifs dans ce mode.`};
+    }
     if(p.status==='reference'&&day.adaptive&&day.includedActivity!=null&&day.maintenance!=null){
       const a=window.EquilibreBalance.activities(day,S.dedupe(s?.sessions||[]),window.Journal?.profile().resting,{available:s?.permissions?.sessions===true});
       const e=window.EquilibreBalance.expenditure(day,a,p);
@@ -110,11 +115,12 @@
     sessions:sessionsOn,dates:()=>combined.map(s=>s.day),steps:date=>combined.find(s=>s.day===date)?.steps??null,
     activityState:date=>({available:combined.find(s=>s.day===date)?.permissions?.sessions===true}),
     render(day,date){
-      const p=projection(day,date),adaptive=day.adaptive===true;
+      const p=projection(day,date),baseMode=day.maintenance==null&&day.base!=null,adaptive=day.adaptive===true||baseMode;
       renderSessions(date);
       $('health-observed').textContent=fmt(p.observed)+' kcal';$('health-remaining').textContent=fmt(p.remaining)+' kcal';
       $('health-projection').textContent=fmt(p.expense)+' kcal';
-      $('health-badge').textContent=({reference:'Maintien conservé',activity:'Maintien + supplément d’activité',manual:'Total saisi',projected:'Projection provisoire',complete:'Journée complète'})[p.status];
+      $('health-badge').textContent=({reference:'Maintien conservé',base:'Base hors sport + activités',activity:'Maintien + supplément d’activité',manual:'Total saisi',projected:'Projection provisoire',complete:'Journée complète'})[p.status];
+      $('health-remaining-row').hidden=baseMode;$('health-projection-label').textContent=baseMode?'Dépense retenue':'Prévision à minuit';
       $('health-detail').textContent=(adaptive?p.reason:'Active « Maintien ajusté par Santé Connect » dans Compte pour utiliser ces données dans le bilan.')+(lastError?' '+lastError:'');
       $('health-updated').textContent=`Données jusqu’au ${time(p.through)} · transfert ${time(p.capturedAt)} · ${sourceLabel(combined.find(s=>s.day===date)?.source||'health-connect')}`;
       $('health-steps').textContent=p.steps===null?'Pas importés : non disponibles':`Pas importés, séances incluses : ${fmt(p.steps)}`;
